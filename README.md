@@ -39,6 +39,41 @@ Server1
 - очистка только соединений с `connection-mark=CM_VPN` при смене состояния маршрута;
 - сохранение работоспособности после перезагрузок Server1/Server2.
 
+## Онлайн-конфигуратор
+
+Для проекта добавлен локальный браузерный конфигуратор:
+
+**https://alphazulu.github.io/mikrotik-bfd-vpn-failover/**
+
+Он умеет:
+
+- импортировать конфигурации WireGuard/AmneziaWG для Server1 и Server2;
+- опционально импортировать входящий AWG/WG-конфиг Server1;
+- автоматически извлекать внутренние tunnel IP, endpoint, UDP port и WireGuard keys;
+- проверять, что Server1/Server2 находятся в одной wg-exit подсети;
+- проверять client subnet и BFD-параметры;
+- генерировать готовые конфиги Server1, Server2 и MikroTik;
+- генерировать BIRD/BFD, Linux policy routing, systemd units и event-driven conntrack cleanup;
+- формировать MikroTik `check-gateway=bfd` и очистку только `CM_VPN`;
+- скачивать отдельные файлы или весь комплект одним `.tar`.
+
+### Приватность конфигуратора
+
+Конфигуратор полностью статический и не имеет серверной части.
+
+- нет analytics;
+- нет внешних JS/CSS/CDN;
+- нет cookies;
+- не используются `localStorage`, `sessionStorage`, `IndexedDB` и Service Worker;
+- выбранные конфиги читаются через File API только в памяти текущей вкладки;
+- CSP страницы содержит `connect-src 'none'`, поэтому JavaScript приложения не может отправлять данные по сети;
+- импортированные private keys маскируются в preview по умолчанию;
+- после нажатия «Очистить всё из памяти вкладки» импортированные значения удаляются из состояния страницы.
+
+Открытие самой GitHub Pages страницы, естественно, загружает статические HTML/CSS/JS-файлы с GitHub Pages, но импортированные конфиги и ключи приложением никуда не отправляются.
+
+Исходный код конфигуратора находится в [configurator/](configurator/).
+
 ## Как это работает
 
 ### 1. MikroTik отправляет выбранный трафик в Server1
@@ -196,10 +231,14 @@ Netwatch или отдельный ping-watchdog для этой схемы не
 │   ├── OPERATIONS.md
 │   ├── SECURITY.md
 │   └── VARIABLES.md
-└── configs/
-    ├── mikrotik/
-    ├── server1/
-    └── server2/
+├── configs/
+│   ├── mikrotik/
+│   ├── server1/
+│   └── server2/
+└── configurator/
+    ├── index.html
+    ├── app.js
+    └── style.css
 ```
 
 ## Документация
@@ -250,7 +289,8 @@ systemctl start wg-quick@wg-exit
 
 1. он описан в русском README;
 2. он описан в английском README;
-3. при необходимости обновлены соответствующие файлы в `docs/` и `configs/`.
+3. при необходимости обновлены соответствующие файлы в `docs/` и `configs/`;
+4. если изменение затрагивает генерируемую схему — одновременно обновлён `configurator/`.
 
 ## Безопасность
 
