@@ -1,0 +1,25 @@
+# Secret/private key material
+*.key
+*.private
+privatekey
+private.key
+
+# Local production configs
+*.local
+*.prod
+*.production
+secrets.env
+.env
+
+# Backups
+*.backup
+*.bak
+*.tar
+*.tar.gz
+*.zip
+
+# Editor/OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
