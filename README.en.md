@@ -47,12 +47,13 @@ The project now includes a local browser-based configurator:
 
 It can:
 
-- import WireGuard/AmneziaWG configurations for Server1 and Server2;
-- optionally import the incoming AWG/WG Server1 configuration;
+- import `wg-exit` configurations for Server1 and Server2;
+- optionally import the incoming AWG Server1 configuration and a separate `wg-in.conf`;
 - extract internal tunnel IPs, endpoint, UDP port, WireGuard keys, optional `PresharedKey` and MTU;
 - validate that Server1 and Server2 are in the same wg-exit subnet;
 - validate client subnet and BFD parameters;
 - generate ready-to-use Server1, Server2 and MikroTik configurations;
+- generate an optional `server1/wg-in.conf` with its own `PostUp`/`PreDown` policy-routing and FORWARD lifecycle hooks;
 - generate BIRD/BFD, Linux policy routing, systemd units, persistent Server1 FORWARD/fallback NAT and event-driven conntrack cleanup;
 - generate MikroTik `check-gateway=bfd` and selective `CM_VPN` cleanup;
 - optionally create a dedicated RouterOS routing table and mangle policy routing for one or more `dst-address-list` values;
