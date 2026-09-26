@@ -27,6 +27,7 @@ const defaults = {
   "mt-route-table": "main",
   "mt-dst": "0.0.0.0/0",
   "connmark": "CM_VPN",
+  "mt-wan-list": "WAN",
   "bfd-interval": "500",
   "bfd-multiplier": "3"
 };
@@ -370,6 +371,15 @@ function validate() {
   if (!validNameToken(value("mt-route-table"))) add("bad", "Имя MikroTik routing table некорректно", "MikroTik routing table name is invalid");
   if (!validNameToken(value("connmark"))) add("bad", "Connection mark некорректен", "Connection mark is invalid");
 
+  const mtAddressLists = value("mt-address-lists").split(",").map((x) => x.trim()).filter(Boolean);
+  if (mtAddressLists.some((name) => !safeToken(name))) {
+    add("bad", "MikroTik address-list содержит недопустимые кавычки или перенос строки", "MikroTik address-list contains quotes or newlines");
+  } else if (mtAddressLists.length) {
+    add("good", "MikroTik policy selectors будут сгенерированы для " + mtAddressLists.length + " address-list", "MikroTik policy selectors will be generated for " + mtAddressLists.length + " address-list value(s)");
+  }
+  if (!validNameToken(value("mt-wan-list"))) add("bad", "MikroTik WAN interface-list некорректен", "MikroTik WAN interface-list is invalid");
+  if (mtAddressLists.length && value("mt-route-table") === "main") add("warn", "Для address-list policy routing обычно используется отдельная routing table, а не main", "Address-list policy routing normally uses a dedicated routing table rather than main");
+
   const table = Number(value("route-table"));
   if (Number.isInteger(table) && table > 0) add("good", "Linux routing table корректна", "Linux routing table is valid");
   else add("bad", "Linux routing table должна быть положительным числом", "Linux routing table must be a positive integer");
@@ -460,6 +470,8 @@ function generateFiles() {
   const mtTable = value("mt-route-table");
   const mtDst = value("mt-dst");
   const connmark = value("connmark");
+  const mtWanList = value("mt-wan-list");
+  const mtAddressLists = value("mt-address-lists").split(",").map((x) => x.trim()).filter(Boolean);
   const bfd = value("bfd-interval");
   const mult = value("bfd-multiplier");
 
@@ -1047,7 +1059,7 @@ function privacyCheck() {
 function clearAll() {
   ["paste-s1", "paste-s2", "paste-in", "s1-address", "s2-address", "s2-endpoint",
    "s1-private", "s1-public", "s2-private", "s2-public", "s1-psk", "s2-psk",
-   "s1-mtu", "s2-mtu", "awg-server", "awg-mt", "awg-net", "wg-in-net"].forEach((id) => { $(id).value = ""; });
+   "s1-mtu", "s2-mtu", "awg-server", "awg-mt", "awg-net", "wg-in-net", "mt-address-lists"].forEach((id) => { $(id).value = ""; });
 
   ["file-s1", "file-s2", "file-in"].forEach((id) => { $(id).value = ""; });
 
