@@ -1,0 +1,13 @@
+[Unit]
+Description=Policy routing for AmneziaWG client traffic
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '/usr/sbin/ip rule show | grep -q "iif <AWG_IF> lookup 200" || /usr/sbin/ip rule add priority 1000 iif <AWG_IF> lookup 200'
+ExecStop=/bin/sh -c '/usr/sbin/ip rule del priority 1000 iif <AWG_IF> lookup 200 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target
