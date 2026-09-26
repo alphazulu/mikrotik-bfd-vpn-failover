@@ -130,9 +130,11 @@ const values = {
   "awg-if": "awg0",
   "mt-if": "wg-awg-proxy-1",
   "route-table": "200",
-  "mt-route-table": "main",
+  "mt-route-table": "VPN",
   "mt-dst": "0.0.0.0/0",
   "connmark": "CM_VPN",
+  "mt-address-lists": "WHATSAPP-CIDR, telegram, vpn",
+  "mt-wan-list": "WAN",
   "bfd-interval": "500",
   "bfd-multiplier": "3"
 };
@@ -175,7 +177,13 @@ assert.match(files["server2/wg-exit.conf"], /-s 10.88.100.0\/24 -o eth0/);
 
 assert.match(files["mikrotik/bfd-failover.rsc"], /address=10.88.99.4\/32 network=10.88.99.1/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /check-gateway=bfd/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /routing-table="VPN"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /connection-mark="CM_VPN"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="WHATSAPP-CIDR"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="telegram"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="vpn"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /new-routing-mark="VPN"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /in-interface-list=!WAN/);
 assert.match(files["INSTALL.txt"], /vpn-failover-firewall\.service/);
 assert.doesNotMatch(files["INSTALL.txt"], /^\s*iptables -t nat .*POSTROUTING -o eth0 -j MASQUERADE/m, "Install guide must not execute a duplicate broad NAT rule");
 
