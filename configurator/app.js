@@ -854,7 +854,6 @@ function generateFiles() {
   const table = value("route-table");
   const mtPolicyMode = value("mt-policy-mode") || "policy";
   const mtTable = value("mt-route-table");
-  const mtRoutingMark = mtTable + "_RM";
   const dedicatedMtTable = Boolean(mtTable) && mtTable !== "main";
   const mtDst = value("mt-dst");
   const connmark = value("connmark");
@@ -927,27 +926,27 @@ function generateFiles() {
         " passthrough=yes connection-state=new dst-address-type=!local dst-address-list=" + qRouter(listName) +
         " comment=" + qRouter("VPN_POLICY_MARK") + "\n";
     }
-    // A routing-mark equal to a table name is resolved by RouterOS before user
-    // routing rules and does not fall through when that route is inactive.
-    // Use a distinct mark so /routing rule action=lookup can try the VPN table
-    // and then main.
-    const policyMark = dedicatedMtTable ? mtRoutingMark : mtTable;
-    mikrotikPolicyBlock += "add chain=prerouting action=mark-routing new-routing-mark=" + qRouter(policyMark) +
+    // In RouterOS v7 new-routing-mark must refer to an existing routing table.
+    // Use the actual table name. With the default policy-rules order, a failed
+    // mangle-table lookup continues to user rules and then main.
+    mikrotikPolicyBlock += "add chain=prerouting action=mark-routing new-routing-mark=" + qRouter(mtTable) +
       " passthrough=yes connection-mark=" + qRouter(connmark) +
       " dst-address-type=!local in-interface-list=!" + mtWanList +
       " comment=" + qRouter("VPN_POLICY_ROUTE") + "\n";
 
     if (dedicatedMtTable) {
       mikrotikPolicyBlock += `
-# Active-backup: lookup the BFD table first. If that route is inactive,
-# action=lookup fails and the next rule uses main (normal WAN default).
+# Explicit fallback after the mangle lookup in the VPN table fails.
+# The default RouterOS policy order is mangle -> ... -> user -> main.
+# This user rule makes the fallback to main explicit without inventing
+# a second routing mark/table.
 /routing rule
-add action=lookup routing-mark=${qRouter(mtRoutingMark)} table=${qRouter(mtTable)} comment="VPN_BFD_LOOKUP"
-add action=lookup routing-mark=${qRouter(mtRoutingMark)} table=main comment="VPN_BFD_FALLBACK"
+:if ([:len [find where comment="VPN_BFD_FALLBACK"]] = 0) do={
+    add action=lookup routing-mark=${qRouter(mtTable)} table=main comment="VPN_BFD_FALLBACK"
+}
 
-# Fasttrack skips mangle, so a routing-mark would apply only to the first packet.
-# Restrict unmarked fasttrack rules to connection-mark=no-mark. Rules that already
-# match a specific connection-mark are left unchanged.
+# Fasttrack skips mangle. Restrict catch-all fasttrack rules to connections
+# without a connection-mark so CM_VPN traffic continues through mangle.
 :foreach ftId in=[/ip firewall filter find where chain=forward action=fasttrack-connection] do={
     :local cm [/ip firewall filter get $ftId connection-mark]
     :if ([:len $cm] = 0) do={
@@ -1307,9 +1306,10 @@ add interfaces=${qRouter(mtIf)} addresses=${awgServer}/32 min-rx=${bfd}ms min-tx
   if (mtPolicyMode === "direct") {
     let directRouteBlock = "/ip route\n";
     for (const destination of mtDirectRoutes) {
-      directRouteBlock += "add dst-address=" + destination +
+      directRouteBlock += "add check-gateway=bfd comment=" + qRouter("VPN_BFD_DIRECT") +
+        " disabled=no distance=1 dst-address=" + destination +
         " gateway=" + qRouter(awgServer + "%" + mtIf) +
-        " check-gateway=bfd distance=1 routing-table=main comment=" + qRouter("VPN_BFD_DIRECT") + "\n";
+        " routing-table=main scope=30 target-scope=10\n";
     }
 
     files["mikrotik/bfd-failover.rsc"] = mikrotikBase +
@@ -1325,7 +1325,7 @@ add interfaces=${qRouter(mtIf)} addresses=${awgServer}/32 min-rx=${bfd}ms min-tx
   } else {
     files["mikrotik/bfd-failover.rsc"] = mikrotikBase +
 `${routingTableEnsure}/ip route
-add dst-address=${mtDst} gateway=${qRouter(awgServer + "%" + mtIf)} check-gateway=bfd distance=1${routingTableClause} comment="VPN_BFD_PRIMARY"
+add check-gateway=bfd comment="VPN_BFD_PRIMARY" disabled=no distance=1 dst-address=${mtDst} gateway=${qRouter(awgServer + "%" + mtIf)}${routingTableClause} scope=30 target-scope=10
 
 /system script
 add name=VPN-BFD-Conntrack policy=read,write,test source={
@@ -1363,12 +1363,12 @@ ${mikrotikPolicyBlock}`;
   const mtModeInstallRu = mtPolicyMode === "direct"
     ? "Режим MikroTik: прямые маршруты в main. Mangle/connection-mark и selective conntrack cleanup на MikroTik не создаются."
     : dedicatedMtTable
-      ? "Режим MikroTik: address-list + mangle + отдельная routing table. При BFD DOWN routing rule action=lookup переходит в main. Fasttrack ограничивается соединениями без connection-mark. Selective conntrack cleanup по connection-mark сохраняется."
+      ? "Режим MikroTik: address-list + mangle + отдельная routing table. Routing mark совпадает с именем таблицы. При BFD DOWN lookup этой таблицы не находит маршрут, explicit routing rule делает fallback в main. Fasttrack ограничивается соединениями без connection-mark."
       : "Режим MikroTik: address-list + mangle, BFD-маршрут в main. Неактивный маршрут освобождает обычный default. Selective conntrack cleanup по connection-mark сохраняется.";
   const mtModeInstallEn = mtPolicyMode === "direct"
     ? "MikroTik mode: direct routes in main. No mangle/connection-mark or selective MikroTik conntrack cleanup is generated."
     : dedicatedMtTable
-      ? "MikroTik mode: address-list + mangle + dedicated routing table. When BFD is DOWN, routing rule action=lookup falls through to main. Fasttrack is limited to connections without a connection-mark. Selective conntrack cleanup by connection-mark is preserved."
+      ? "MikroTik mode: address-list + mangle + dedicated routing table. The routing mark is the table name. When BFD is DOWN, that lookup fails and an explicit routing rule falls back to main. Fasttrack is limited to connections without a connection-mark."
       : "MikroTik mode: address-list + mangle, with the BFD route in main. An inactive route leaves the regular default in place. Selective conntrack cleanup by connection-mark is preserved.";
 
   const wgInInstallRu = hasWgInConfig
