@@ -56,9 +56,18 @@ Server1
 - генерировать optional `server1/wg-in.conf` с собственными `PostUp`/`PreDown` для `ip rule` и FORWARD;
 - генерировать BIRD/BFD, Linux policy routing, systemd units, persistent Server1 FORWARD/fallback NAT и event-driven conntrack cleanup;
 - формировать MikroTik `check-gateway=bfd` и очистку только `CM_VPN`;
-- опционально создавать отдельную RouterOS routing table и mangle policy routing по одному или нескольким `dst-address-list`;
+- выбирать режим MikroTik: либо отдельная RouterOS routing table + `dst-address-list`/mangle, либо прямые статические маршруты в `main` без маркировки;
 - скачивать отдельные файлы или весь комплект одним `.tar`;
 - сохранять source-specific NAT/forwarding для Server2 в `wg-exit.conf`, а fallback NAT Server1 — в отдельном systemd unit.
+
+### Режимы маршрутизации MikroTik
+
+Конфигуратор поддерживает два варианта:
+
+1. **Address-list + mangle.** Для выбранных `dst-address-list` создаются `mark-connection` и `mark-routing`, отдельная routing table и BFD-контролируемый маршрут. В этом режиме сохраняется selective cleanup соединений по `connection-mark`.
+2. **Прямые маршруты.** Пользователь задаёт список IPv4/CIDR, а конфигуратор создаёт обычные static routes в `main` через AWG gateway с `check-gateway=bfd`. Mangle и connection marks не создаются. При BFD DOWN маршруты становятся неактивны и RouterOS использует другие подходящие маршруты, обычно обычный default route.
+
+Во втором режиме selective conntrack cleanup на MikroTik намеренно не создаётся, поскольку нет connection mark.
 
 ### Автоматические проверки
 
