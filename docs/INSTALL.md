@@ -3,8 +3,8 @@
 This guide assumes:
 
 - Server1 already has a working AmneziaWG interface `<AWG_IF>`;
-- Server1 can reach Server2 over the public Internet;
-- Server2 can forward IPv4 traffic to the Internet;
+- Server1 can reach every configured Server2 over the public Internet;
+- every Server2 can forward IPv4 traffic to the Internet;
 - RouterOS 7 is used on MikroTik;
 - all examples are sanitized and use placeholders.
 
@@ -95,9 +95,21 @@ SYSCTL
 sysctl --system
 ```
 
-## 6. Server1 — wg-exit
+## 6. Server1 — wg-exit interfaces
 
-Create `/etc/wireguard/wg-exit.conf` from `configs/server1/wg-exit.conf.example`.
+For one Server2, create `/etc/wireguard/wg-exit.conf` from `configs/server1/wg-exit.conf.example`.
+
+For multiple Server2 nodes, create one independent WireGuard interface per exit, for example:
+
+```text
+/etc/wireguard/wg-exit.conf
+/etc/wireguard/wg-exit2.conf
+/etc/wireguard/wg-exit3.conf
+```
+
+Each interface must use its own transfer subnet. The configurator assigns every Server2 a numeric priority; lower values are preferred.
+
+See [MULTI_EXIT.md](MULTI_EXIT.md) for the complete model.
 
 Critical setting:
 
@@ -107,17 +119,31 @@ Table = off
 
 If the imported/current WireGuard pair uses a `PresharedKey`, preserve it on both peers. If either side uses a custom `MTU`, preserve that value as well.
 
-Enable:
+Enable every generated exit interface:
 
 ```bash
 systemctl enable --now wg-quick@wg-exit
+systemctl enable --now wg-quick@wg-exit2
+# ...
 ```
 
 ## 7. Server1 — policy rules
 
+Single-exit deployments keep the original rule:
+
 ```bash
 ip rule add priority 1000 iif <AWG_IF> lookup 200
 ```
+
+For multiple exits the configurator creates an ordered chain. With base table `200`:
+
+```bash
+ip rule add priority 1000 iif <AWG_IF> lookup 200
+ip rule add priority 1001 iif <AWG_IF> lookup 201
+ip rule add priority 1002 iif <AWG_IF> lookup 202
+```
+
+The Server2 with the lowest numeric priority is mapped to the first table. If that table has no BIRD default route, Linux continues to the next rule and therefore the next Server2.
 
 Optional second incoming WireGuard:
 
@@ -137,7 +163,7 @@ The generated file contains:
 - private key and peer public key;
 - optional PresharedKey;
 - peer AllowedIPs;
-- `PostUp`/`PreDown` hooks for priority `1001` policy routing into table `200`;
+- `PostUp`/`PreDown` policy rules for the same ordered exit tables used by `awg0` (single-exit keeps priority `1001`; multi-exit uses a separate generated priority range);
 - same-interface client isolation;
 - forwarded client egress permission;
 - established/related return forwarding.
@@ -167,9 +193,17 @@ The unit manages source-specific fallback `MASQUERADE` rules plus explicit Serve
 
 ## 10. Server1 — BIRD
 
-Create `/etc/bird/bird.conf` from `configs/server1/bird.conf.example`.
+Create `/etc/bird/bird.conf` from `configs/server1/bird.conf.example` for a single exit, or use the configurator / `configs/server1/bird-multi-exit.conf.example` for multiple exits.
 
-Key route:
+Each Server2 owns its own BIRD table, static BFD-controlled default, and Linux kernel table:
+
+```text
+highest priority -> exit4_1 -> table 200
+next priority    -> exit4_2 -> table 201
+next priority    -> exit4_3 -> table 202
+```
+
+The per-exit static route remains BIRD-2.14-compatible:
 
 ```bird
 route 0.0.0.0/0 via <WG_EXIT_S2_IP> bfd;
@@ -222,24 +256,27 @@ In direct-route mode, existing connections are not selectively flushed by the ge
 
 ## 13. Functional test
 
-Normal state:
+For a single exit, the original test remains valid.
 
-- BFD Server1 ↔ Server2 is UP.
-- `ip route show table 200` contains a default through `wg-exit`.
-- VPN clients exit through Server2.
-
-Failover test on Server2:
+For multiple exits, inspect:
 
 ```bash
-systemctl stop wg-quick@wg-exit
+birdc show bfd sessions
+ip rule
+ip route show table 200
+ip route show table 201
+ip route show table 202
+journalctl -t vpn-exit-monitor -f
 ```
 
-Expected: BFD DOWN, route removed from table 200, conntrack flushed, new traffic exits through Server1.
+Then stop `wg-exit` on the currently preferred Server2. Expected behavior:
 
-Failback:
+1. that exit's BFD session goes DOWN;
+2. only its Linux table loses the BIRD default;
+3. policy routing selects the next available Server2 table;
+4. VPN conntrack is flushed because the effective path changed;
+5. when the more preferred Server2 returns, automatic failback occurs.
 
-```bash
-systemctl start wg-quick@wg-exit
-```
+Repeat until every Server2 is unavailable; the final fallback must be Server1's `main` table and WAN.
 
-Expected: BFD UP, route restored, conntrack flushed again, new traffic returns to Server2.
+Detailed test procedure: [MULTI_EXIT.md](MULTI_EXIT.md).
