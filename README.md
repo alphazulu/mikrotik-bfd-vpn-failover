@@ -55,6 +55,7 @@ Server1
 - генерировать готовые конфиги Server1, Server2 и MikroTik;
 - генерировать BIRD/BFD, Linux policy routing, systemd units, persistent Server1 FORWARD/fallback NAT и event-driven conntrack cleanup;
 - формировать MikroTik `check-gateway=bfd` и очистку только `CM_VPN`;
+- опционально создавать отдельную RouterOS routing table и mangle policy routing по одному или нескольким `dst-address-list`;
 - скачивать отдельные файлы или весь комплект одним `.tar`;
 - сохранять source-specific NAT/forwarding для Server2 в `wg-exit.conf`, а fallback NAT Server1 — в отдельном systemd unit.
 
