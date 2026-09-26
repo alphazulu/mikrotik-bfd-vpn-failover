@@ -940,9 +940,8 @@ function generateFiles() {
 # The default RouterOS policy order is mangle -> ... -> user -> main.
 # This user rule makes the fallback to main explicit without inventing
 # a second routing mark/table.
-/routing rule
-:if ([:len [find where comment="VPN_BFD_FALLBACK"]] = 0) do={
-    add action=lookup routing-mark=${qRouter(mtTable)} table=main comment="VPN_BFD_FALLBACK"
+:if ([:len [/routing rule find where comment="VPN_BFD_FALLBACK"]] = 0) do={
+    /routing rule add action=lookup routing-mark=${qRouter(mtTable)} table=main comment="VPN_BFD_FALLBACK"
 }
 
 # Fasttrack skips mangle. Restrict catch-all fasttrack rules to connections
