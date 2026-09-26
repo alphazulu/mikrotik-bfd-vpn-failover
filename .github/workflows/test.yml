@@ -52,8 +52,10 @@ jobs:
           wg-quick strip tests/.generated/server1-wg-exit.conf >/dev/null
           wg-quick strip tests/.generated/server2-wg-exit.conf >/dev/null
           wg-quick strip tests/.generated/server1-wg-in.conf >/dev/null
-          wg-quick strip tests/.generated/multi-server1-wg-exit2.conf >/dev/null
-          wg-quick strip tests/.generated/multi-server2-wg-exit.conf >/dev/null
+          cp tests/.generated/multi-server1-wg-exit2.conf /tmp/wgx2.conf
+          wg-quick strip /tmp/wgx2.conf >/dev/null
+          cp tests/.generated/multi-server2-wg-exit.conf /tmp/wgs2.conf
+          wg-quick strip /tmp/wgs2.conf >/dev/null
 
       - name: Validate generated shell
         run: |
