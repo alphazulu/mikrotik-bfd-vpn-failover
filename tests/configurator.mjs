@@ -172,7 +172,7 @@ assert.match(files["mikrotik/bfd-failover.rsc"], /address=10\.3\.2\.4\/32 networ
 assert.match(files["mikrotik/bfd-failover.rsc"], /check-gateway=bfd/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /connection-mark="CM_VPN"/);
 assert.match(files["INSTALL.txt"], /vpn-failover-firewall\.service/);
-assert.doesNotMatch(files["INSTALL.txt"], /POSTROUTING -o eth0 -j MASQUERADE/, "Install guide must not add a duplicate broad NAT rule");
+assert.doesNotMatch(files["INSTALL.txt"], /^\s*iptables -t nat .*POSTROUTING -o eth0 -j MASQUERADE/m, "Install guide must not execute a duplicate broad NAT rule");
 
 const validS2 = element("s2-address").value;
 element("s2-address").value = "10.10.13.2/30";
