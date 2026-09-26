@@ -49,6 +49,7 @@ jobs:
         run: |
           wg-quick strip tests/.generated/server1-wg-exit.conf >/dev/null
           wg-quick strip tests/.generated/server2-wg-exit.conf >/dev/null
+          wg-quick strip tests/.generated/server1-wg-in.conf >/dev/null
 
       - name: Validate generated shell
         run: bash -n tests/.generated/vpn-exit-monitor.sh
