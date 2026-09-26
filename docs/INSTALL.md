@@ -213,7 +213,12 @@ For a `/32` tunnel address:
 add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF>
 ```
 
-Then enable BFD and use `check-gateway=bfd` on the monitored route.
+Then choose one of the two generated MikroTik modes:
+
+- **Address-list + mangle:** use a dedicated routing table, mark selected connections, and use `check-gateway=bfd` on the monitored route. This mode supports selective `CM_VPN`-style conntrack cleanup.
+- **Direct routes:** add the required destination prefixes directly to `main`, each through the AWG gateway with `check-gateway=bfd`. No mangle or connection marks are generated.
+
+In direct-route mode, existing connections are not selectively flushed by the generated MikroTik script because no connection mark exists.
 
 ## 13. Functional test
 
