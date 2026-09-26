@@ -72,9 +72,13 @@ VPN client private address
 
 Server1 does not NAT traffic between the incoming VPN and `wg-exit`.
 
+On Server2 the generated/reference configuration installs source-specific `MASQUERADE` rules for the VPN client subnets and permits established return traffic back into `wg-exit`. These rules are tied to `wg-exit` lifecycle with `PostUp`/`PostDown`, so they survive normal service restarts without relying on a manually entered transient iptables rule.
+
 ### Fallback path
 
-When Server2 becomes unavailable, the same traffic leaves Server1 directly through its WAN. Server1 must therefore already have a suitable MASQUERADE rule on its WAN interface.
+When Server2 becomes unavailable, the same traffic leaves Server1 directly through its WAN. Server1 therefore needs source NAT for the VPN client subnet(s) on its WAN interface.
+
+The project supplies a oneshot systemd unit, `vpn-failover-firewall.service`, which adds source-specific fallback `MASQUERADE` rules on start and removes only its own commented rules on stop. This makes fallback NAT persistent across reboot without flushing or replacing unrelated firewall state.
 
 ## 4. Conntrack behavior
 
