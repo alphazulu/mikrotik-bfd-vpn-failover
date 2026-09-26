@@ -367,6 +367,35 @@ function validate() {
   if (wgInNet && !parseCidr(wgInNet)) add("bad", "Дополнительный WG client subnet некорректен", "Additional WG client subnet is invalid");
   else if (wgInNet) add("good", "Дополнительный WG client subnet будет добавлен", "Additional WG client subnet will be included");
 
+  const wgInAddress = value("wg-in-address");
+  const wgInPort = value("wg-in-port");
+  const wgInPrivate = value("wg-in-private");
+  const wgInPeerPublic = value("wg-in-peer-public");
+  const wgInPeerAllowed = value("wg-in-peer-allowed");
+  const wgInPsk = value("wg-in-psk");
+  const wgInAny = [wgInAddress, wgInPort, wgInPrivate, wgInPeerPublic, wgInPeerAllowed, wgInPsk].some(Boolean);
+
+  if (wgInAny) {
+    const parsedWgIn = parseCidr(wgInAddress);
+    if (!parsedWgIn) add("bad", "wg-in Address должен быть IPv4/CIDR", "wg-in Address must be IPv4/CIDR");
+    else {
+      add("good", "wg-in Address корректен", "wg-in Address is valid");
+      if (wgInNet && parsedWgIn.network !== networkFromCidr(wgInNet)) {
+        add("bad", "wg-in Address и WG client subnet должны относиться к одной подсети", "wg-in Address and WG client subnet must describe the same subnet");
+      }
+    }
+
+    const wgiPortNum = Number(wgInPort);
+    if (!Number.isInteger(wgiPortNum) || wgiPortNum < 1 || wgiPortNum > 65535) add("bad", "wg-in ListenPort должен быть 1..65535", "wg-in ListenPort must be 1..65535");
+    if (!validWgKey(wgInPrivate)) add("bad", "Нужен корректный wg-in PrivateKey", "A valid wg-in PrivateKey is required");
+    if (!validWgKey(wgInPeerPublic)) add("bad", "Нужен корректный wg-in Peer PublicKey", "A valid wg-in Peer PublicKey is required");
+    if (!wgInPeerAllowed || wgInPeerAllowed.split(",").map((x) => x.trim()).some((x) => !parseCidr(x))) {
+      add("bad", "wg-in Peer AllowedIPs должны содержать IPv4/CIDR", "wg-in Peer AllowedIPs must contain IPv4/CIDR values");
+    }
+    if (wgInPsk && !validWgKey(wgInPsk)) add("bad", "wg-in PresharedKey имеет неверный формат", "wg-in PresharedKey has an invalid format");
+    if (!wgInNet) add("bad", "Для wg-in требуется WG client subnet", "WG client subnet is required for wg-in");
+  }
+
   ["s1-wan", "s2-wan", "awg-if"].forEach((id) => {
     if (validLinuxInterface(value(id))) add("good", id + " задан", id + " is set");
     else add("bad", id + " должен быть корректным Linux interface name (до 15 символов)", id + " must be a valid Linux interface name (up to 15 characters)");
