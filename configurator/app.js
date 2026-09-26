@@ -513,6 +513,20 @@ function generateFiles() {
 
   const routingTableClause = mtTable && mtTable !== "main" ? " routing-table=" + qRouter(mtTable) : "";
 
+  let mikrotikPolicyBlock = "";
+  if (mtAddressLists.length) {
+    mikrotikPolicyBlock += "\n# Optional policy selectors generated from destination address-lists.\n/ip firewall mangle\n";
+    for (const listName of mtAddressLists) {
+      mikrotikPolicyBlock += "add chain=prerouting action=mark-connection new-connection-mark=" + qRouter(connmark) +
+        " passthrough=yes connection-state=new dst-address-list=" + qRouter(listName) +
+        " comment=" + qRouter("VPN_POLICY_MARK") + "\n";
+    }
+    mikrotikPolicyBlock += "add chain=prerouting action=mark-routing new-routing-mark=" + qRouter(mtTable) +
+      " passthrough=yes connection-mark=" + qRouter(connmark) +
+      " in-interface-list=!" + mtWanList +
+      " comment=" + qRouter("VPN_POLICY_ROUTE") + "\n";
+  }
+
   const files = {};
 
   files["server1/wg-exit.conf"] =
@@ -729,8 +743,7 @@ add name=VPN-BFD-Conntrack policy=read,write,test source={
 }
 
 /system scheduler
-add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack start-time=startup
-`;
+add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack start-time=startup\n${mikrotikPolicyBlock}`;
 
   files["INSTALL.txt"] = state.lang === "ru"
     ? `MikroTik BFD VPN Failover — сгенерированный комплект
