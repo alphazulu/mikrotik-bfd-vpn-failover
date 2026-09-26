@@ -30,7 +30,7 @@ protocol static exit_default {
         table exit4;
     };
 
-    route 0.0.0.0/0 via <WG_EXIT_S2_IP> dev "wg-exit" bfd;
+    route 0.0.0.0/0 via <WG_EXIT_S2_IP> bfd;
 }
 
 protocol kernel kernel_exit {
