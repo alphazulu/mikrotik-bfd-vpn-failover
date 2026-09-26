@@ -440,20 +440,43 @@ function validate() {
     add("bad", "Нужно корректное имя дополнительного WG интерфейса", "A valid additional WG interface name is required");
   }
 
-  if (!parseCidr(value("mt-dst"))) add("bad", "MikroTik dst-address должен быть IPv4/CIDR", "MikroTik dst-address must be IPv4/CIDR");
-  else add("good", "MikroTik dst-address корректен", "MikroTik dst-address is valid");
-
-  if (!validNameToken(value("mt-route-table"))) add("bad", "Имя MikroTik routing table некорректно", "MikroTik routing table name is invalid");
-  if (!validNameToken(value("connmark"))) add("bad", "Connection mark некорректен", "Connection mark is invalid");
-
-  const mtAddressLists = value("mt-address-lists").split(",").map((x) => x.trim()).filter(Boolean);
-  if (mtAddressLists.some((name) => !safeToken(name))) {
-    add("bad", "MikroTik address-list содержит недопустимые кавычки или перенос строки", "MikroTik address-list contains quotes or newlines");
-  } else if (mtAddressLists.length) {
-    add("good", "MikroTik policy selectors будут сгенерированы для " + mtAddressLists.length + " address-list", "MikroTik policy selectors will be generated for " + mtAddressLists.length + " address-list value(s)");
+  const mtPolicyMode = value("mt-policy-mode") || "policy";
+  if (!["policy", "direct"].includes(mtPolicyMode)) {
+    add("bad", "Неизвестный режим маршрутизации MikroTik", "Unknown MikroTik routing mode");
   }
-  if (!validNameToken(value("mt-wan-list"))) add("bad", "MikroTik WAN interface-list некорректен", "MikroTik WAN interface-list is invalid");
-  if (mtAddressLists.length && value("mt-route-table") === "main") add("warn", "Для address-list policy routing обычно используется отдельная routing table, а не main", "Address-list policy routing normally uses a dedicated routing table rather than main");
+
+  if (mtPolicyMode === "policy") {
+    if (!parseCidr(value("mt-dst"))) add("bad", "MikroTik dst-address должен быть IPv4/CIDR", "MikroTik dst-address must be IPv4/CIDR");
+    else add("good", "MikroTik dst-address корректен", "MikroTik dst-address is valid");
+
+    if (!validNameToken(value("mt-route-table"))) add("bad", "Имя MikroTik routing table некорректно", "MikroTik routing table name is invalid");
+    if (!validNameToken(value("connmark"))) add("bad", "Connection mark некорректен", "Connection mark is invalid");
+
+    const mtAddressLists = value("mt-address-lists").split(",").map((x) => x.trim()).filter(Boolean);
+    if (!mtAddressLists.length) {
+      add("bad", "В режиме address-list нужно указать хотя бы один dst-address-list", "Address-list mode requires at least one dst-address-list");
+    } else if (mtAddressLists.some((name) => !safeToken(name))) {
+      add("bad", "MikroTik address-list содержит недопустимые кавычки или перенос строки", "MikroTik address-list contains quotes or newlines");
+    } else {
+      add("good", "MikroTik policy selectors будут сгенерированы для " + mtAddressLists.length + " address-list", "MikroTik policy selectors will be generated for " + mtAddressLists.length + " address-list value(s)");
+    }
+
+    if (!validNameToken(value("mt-wan-list"))) add("bad", "MikroTik WAN interface-list некорректен", "MikroTik WAN interface-list is invalid");
+    if (mtAddressLists.length && value("mt-route-table") === "main") add("warn", "Для address-list policy routing обычно используется отдельная routing table, а не main", "Address-list policy routing normally uses a dedicated routing table rather than main");
+  }
+
+  if (mtPolicyMode === "direct") {
+    const direct = parseDirectRouteDestinations(value("mt-direct-routes"));
+    if (direct.invalid.length) {
+      add("bad", "Некорректные назначения прямых маршрутов: " + direct.invalid.join(", "), "Invalid direct-route destinations: " + direct.invalid.join(", "));
+    }
+    if (!direct.values.length) {
+      add("bad", "В режиме прямых маршрутов нужно указать хотя бы один IP или CIDR", "Direct-route mode requires at least one IP or CIDR");
+    } else if (!direct.invalid.length) {
+      add("good", "Будет создано прямых маршрутов: " + direct.values.length, "Direct routes to generate: " + direct.values.length);
+    }
+    add("warn", "В режиме прямых маршрутов mangle, connection-mark и selective conntrack cleanup на MikroTik не создаются", "Direct-route mode does not generate mangle, connection marks, or selective MikroTik conntrack cleanup");
+  }
 
   const table = Number(value("route-table"));
   if (Number.isInteger(table) && table > 0) add("good", "Linux routing table корректна", "Linux routing table is valid");
