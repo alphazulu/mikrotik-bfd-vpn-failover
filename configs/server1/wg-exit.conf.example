@@ -1,10 +1,14 @@
 [Interface]
 Address = <WG_EXIT_S1_IP>/<WG_EXIT_PREFIX>
 PrivateKey = <SERVER1_WG_EXIT_PRIVATE_KEY>
+# Optional when a non-default MTU is required:
+# MTU = <WG_EXIT_MTU>
 Table = off
 
 [Peer]
 PublicKey = <SERVER2_WG_EXIT_PUBLIC_KEY>
+# Optional, but must be identical on both peers:
+# PresharedKey = <WG_EXIT_PRESHARED_KEY>
 Endpoint = <SERVER2_PUBLIC_IP>:<WG_EXIT_PORT>
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
