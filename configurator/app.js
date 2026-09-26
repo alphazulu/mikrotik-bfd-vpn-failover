@@ -58,6 +58,7 @@ function setLanguage(lang) {
   });
   $("lang-ru").classList.toggle("active", lang === "ru");
   $("lang-en").classList.toggle("active", lang === "en");
+  if ($("extra-exits")) renderExtraExits();
 }
 
 function parseWgIni(text) {
@@ -1553,6 +1554,7 @@ function updateSecretVisibility() {
   if (state.currentFile) {
     $("preview").querySelector("code").textContent = maskSecrets(state.generated[state.currentFile] || "");
   }
+  if ($("extra-exits")) renderExtraExits();
 }
 
 function downloadBlob(blob, filename) {
@@ -1704,6 +1706,9 @@ function clearAll() {
   $("results-card").classList.add("hidden");
   state.generated = {};
   state.currentFile = null;
+  state.extraExits = [];
+  state.nextExitId = 2;
+  renderExtraExits();
   updateMikrotikMode();
 }
 
@@ -1719,6 +1724,10 @@ $("parse-s1").addEventListener("click", () => importConfig("s1", $("paste-s1").v
 $("parse-s2").addEventListener("click", () => importConfig("s2", $("paste-s2").value));
 $("parse-in").addEventListener("click", () => importConfig("in", $("paste-in").value));
 $("parse-wgin").addEventListener("click", () => importConfig("wgin", $("paste-wgin").value));
+$("add-exit").addEventListener("click", () => {
+  state.extraExits.push(newExtraExit());
+  renderExtraExits();
+});
 $("mt-policy-mode").addEventListener("change", updateMikrotikMode);
 
 $("validate").addEventListener("click", validate);
@@ -1737,4 +1746,5 @@ Object.entries(defaults).forEach(([id, val]) => {
 
 setLanguage("ru");
 updateSecretVisibility();
+renderExtraExits();
 updateMikrotikMode();
