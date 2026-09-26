@@ -506,8 +506,15 @@ function generateFiles() {
   const awgMt = value("awg-mt");
   const awgNet = value("awg-net");
   const wgInNet = value("wg-in-net");
+  const wgInAddress = value("wg-in-address");
+  const wgInPort = value("wg-in-port");
+  const wgInPrivate = value("wg-in-private");
+  const wgInPeerPublic = value("wg-in-peer-public");
+  const wgInPeerAllowed = value("wg-in-peer-allowed");
+  const wgInPsk = value("wg-in-psk");
   const awgIf = value("awg-if");
   const wgInIf = value("wg-in-if") || "wg-in";
+  const hasWgInConfig = Boolean(wgInAddress && wgInPort && wgInPrivate && wgInPeerPublic && wgInPeerAllowed);
   const mtIf = value("mt-if");
   const table = value("route-table");
   const mtTable = value("mt-route-table");
@@ -521,10 +528,10 @@ function generateFiles() {
   const allowedServer2 = [s1Ip + "/32", awgNet];
   if (wgInNet) allowedServer2.push(wgInNet);
 
-  const policyExtraStart = wgInNet
+  const policyExtraStart = wgInNet && !hasWgInConfig
     ? "\nExecStart=/bin/sh -c '/usr/sbin/ip rule show | grep -Fq \"iif " + wgInIf + " lookup " + table + "\" || /usr/sbin/ip rule add priority 1001 iif " + wgInIf + " lookup " + table + "'"
     : "";
-  const policyExtraStop = wgInNet
+  const policyExtraStop = wgInNet && !hasWgInConfig
     ? "\nExecStop=/bin/sh -c '/usr/sbin/ip rule del priority 1001 iif " + wgInIf + " lookup " + table + " 2>/dev/null || true'"
     : "";
 
@@ -543,15 +550,19 @@ function generateFiles() {
 
   const fallbackNatExtraStart = wgInNet
     ? "\nExecStart=/bin/sh -c '/usr/sbin/iptables -t nat -C POSTROUTING -s " + wgInNet + " -o " + s1Wan + " -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || /usr/sbin/iptables -t nat -A POSTROUTING -s " + wgInNet + " -o " + s1Wan + " -m comment --comment vpn-failover-fallback -j MASQUERADE'"
-      + "\nExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i " + wgInIf + " -o " + wgInIf + " -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || /usr/sbin/iptables -I FORWARD 1 -i " + wgInIf + " -o " + wgInIf + " -m comment --comment vpn-failover-forward -j DROP'"
-      + "\nExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i " + wgInIf + " -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 2 -i " + wgInIf + " -m comment --comment vpn-failover-forward -j ACCEPT'"
-      + "\nExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -o " + wgInIf + " -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 3 -o " + wgInIf + " -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT'"
+      + (!hasWgInConfig
+        ? "\nExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i " + wgInIf + " -o " + wgInIf + " -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || /usr/sbin/iptables -I FORWARD 1 -i " + wgInIf + " -o " + wgInIf + " -m comment --comment vpn-failover-forward -j DROP'"
+          + "\nExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i " + wgInIf + " -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 2 -i " + wgInIf + " -m comment --comment vpn-failover-forward -j ACCEPT'"
+          + "\nExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -o " + wgInIf + " -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 3 -o " + wgInIf + " -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT'"
+        : "")
     : "";
   const fallbackNatExtraStop = wgInNet
     ? "\nExecStop=/bin/sh -c '/usr/sbin/iptables -t nat -D POSTROUTING -s " + wgInNet + " -o " + s1Wan + " -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || true'"
-      + "\nExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -o " + wgInIf + " -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'"
-      + "\nExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i " + wgInIf + " -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'"
-      + "\nExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i " + wgInIf + " -o " + wgInIf + " -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || true'"
+      + (!hasWgInConfig
+        ? "\nExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -o " + wgInIf + " -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'"
+          + "\nExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i " + wgInIf + " -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'"
+          + "\nExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i " + wgInIf + " -o " + wgInIf + " -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || true'"
+        : "")
     : "";
 
   const routingTableClause = mtTable && mtTable !== "main" ? " routing-table=" + qRouter(mtTable) : "";
@@ -587,6 +598,31 @@ Endpoint = ${endpoint}:${port}
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 `;
+
+
+  if (hasWgInConfig) {
+    const wgInPskLine = wgInPsk ? "\nPresharedKey = " + wgInPsk : "";
+    files["server1/wg-in.conf"] =
+`[Interface]
+Address = ${wgInAddress}
+ListenPort = ${wgInPort}
+PrivateKey = ${wgInPrivate}
+
+PostUp = ip rule show | grep -Fq "iif %i lookup ${table}" || ip rule add priority 1001 iif %i lookup ${table}
+PreDown = ip rule del priority 1001 iif %i lookup ${table} 2>/dev/null || true
+
+PostUp = iptables -C FORWARD -i %i -o %i -m comment --comment wg-in-failover -j DROP 2>/dev/null || iptables -I FORWARD 1 -i %i -o %i -m comment --comment wg-in-failover -j DROP
+PostUp = iptables -C FORWARD -i %i -m comment --comment wg-in-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -i %i -m comment --comment wg-in-failover -j ACCEPT
+PostUp = iptables -C FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-in-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 3 -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-in-failover -j ACCEPT
+PreDown = iptables -D FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-in-failover -j ACCEPT 2>/dev/null || true
+PreDown = iptables -D FORWARD -i %i -m comment --comment wg-in-failover -j ACCEPT 2>/dev/null || true
+PreDown = iptables -D FORWARD -i %i -o %i -m comment --comment wg-in-failover -j DROP 2>/dev/null || true
+
+[Peer]
+PublicKey = ${wgInPeerPublic}${wgInPskLine}
+AllowedIPs = ${wgInPeerAllowed}
+`;
+  }
 
   files["server2/wg-exit.conf"] =
 `[Interface]
