@@ -125,9 +125,30 @@ Optional second incoming WireGuard:
 ip rule add priority 1001 iif <WG_IN_IF> lookup 200
 ```
 
-Persist the rules using the supplied systemd example or another local network configuration mechanism.
+When a complete `wg-in.conf` is generated, this rule is persisted by that interface's own `PostUp`/`PreDown` hooks. If only a client subnet/interface name is supplied and no full `wg-in` configuration is generated, the policy-routing systemd unit can persist the additional rule instead.
 
-## 8. Server1 — persistent fallback NAT
+## 8. Server1 — optional wg-in
+
+If an additional incoming WireGuard interface is used, the configurator can generate `server1/wg-in.conf`.
+
+The generated file contains:
+
+- Server1 address and listen port;
+- private key and peer public key;
+- optional PresharedKey;
+- peer AllowedIPs;
+- `PostUp`/`PreDown` hooks for priority `1001` policy routing into table `200`;
+- same-interface client isolation;
+- forwarded client egress permission;
+- established/related return forwarding.
+
+Install it as `/etc/wireguard/<WG_IN_IF>.conf` and enable:
+
+```bash
+systemctl enable --now wg-quick@<WG_IN_IF>
+```
+
+## 9. Server1 — persistent fallback NAT
 
 Install `configs/server1/vpn-failover-firewall.service.example` as:
 
@@ -144,7 +165,7 @@ systemctl enable --now vpn-failover-firewall.service
 
 The unit manages source-specific fallback `MASQUERADE` rules plus explicit Server1 `FORWARD` rules for the incoming VPN interfaces. Generated rules carry project-specific comments so the service removes only its own entries.
 
-## 9. Server1 — BIRD
+## 10. Server1 — BIRD
 
 Create `/etc/bird/bird.conf` from `configs/server1/bird.conf.example`.
 
@@ -166,7 +187,7 @@ ip route show table 200
 
 With BFD UP, table `200` should contain a default via `wg-exit`.
 
-## 10. Server1 — conntrack event monitor
+## 11. Server1 — conntrack event monitor
 
 Install `configs/server1/vpn-exit-monitor.sh` as `/usr/local/sbin/vpn-exit-monitor.sh` and `configs/server1/vpn-exit-monitor.service` under `/etc/systemd/system/`.
 
@@ -181,7 +202,7 @@ journalctl -t vpn-exit-monitor -f
 
 The service listens to Netlink route events using `ip monitor route` and flushes VPN conntrack only on add/delete events for the BIRD default route in table `200`.
 
-## 11. MikroTik — BFD to Server1
+## 12. MikroTik — BFD to Server1
 
 Use the sanitized example in `configs/mikrotik/bfd-failover.rsc.example`.
 
@@ -194,7 +215,7 @@ add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF>
 
 Then enable BFD and use `check-gateway=bfd` on the monitored route.
 
-## 12. Functional test
+## 13. Functional test
 
 Normal state:
 
