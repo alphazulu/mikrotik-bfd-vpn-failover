@@ -13,13 +13,17 @@ const $ = (id) => document.getElementById(id);
 const state = {
   lang: "ru",
   generated: {},
-  currentFile: null
+  currentFile: null,
+  extraExits: [],
+  nextExitId: 2
 };
 
 const defaults = {
   "wg-port": "51830",
   "s1-wan": "eth0",
   "s2-wan": "eth0",
+  "s2-priority": "10",
+  "s1-exit-if": "wg-exit",
   "awg-if": "awg0",
   "wg-in-if": "wg-in",
   "mt-if": "wg-awg-proxy-1",
@@ -317,6 +321,251 @@ function importConfig(role, text) {
     )
   );
   updateSecretVisibility();
+}
+
+function newExtraExit(initial = {}) {
+  const id = state.nextExitId++;
+  return Object.assign({
+    id,
+    label: "Server2 #" + id,
+    priority: String(id * 10),
+    s1Interface: "wg-exit" + id,
+    s1Address: "",
+    s2Address: "",
+    endpoint: "",
+    port: "51830",
+    s1Private: "",
+    s1Public: "",
+    s2Private: "",
+    s2Public: "",
+    psk1: "",
+    psk2: "",
+    s1Mtu: "",
+    s2Mtu: "",
+    s2Wan: "eth0",
+    s1Text: "",
+    s2Text: ""
+  }, initial);
+}
+
+function updateExtraExit(id, field, value) {
+  const exit = state.extraExits.find((item) => item.id === id);
+  if (!exit) return;
+  exit[field] = value;
+}
+
+function parseExtraExitSide(id, side, text) {
+  const exit = state.extraExits.find((item) => item.id === id);
+  if (!exit) return;
+
+  const parsed = parseWgIni(text);
+  const peer = parsed.peers[0] || {};
+
+  if (side === "s1") {
+    exit.s1Text = text;
+    if (parsed.interface.Address) exit.s1Address = firstIpv4Address(parsed.interface.Address);
+    if (parsed.interface.PrivateKey) exit.s1Private = parsed.interface.PrivateKey;
+    if (parsed.interface.MTU) exit.s1Mtu = parsed.interface.MTU;
+    if (peer.PublicKey) exit.s2Public = peer.PublicKey;
+    if (peer.PresharedKey) exit.psk1 = peer.PresharedKey;
+    if (peer.Endpoint) {
+      const ep = splitEndpoint(peer.Endpoint);
+      if (ep.host) exit.endpoint = ep.host;
+      if (ep.port) exit.port = ep.port;
+    }
+  } else {
+    exit.s2Text = text;
+    if (parsed.interface.Address) exit.s2Address = firstIpv4Address(parsed.interface.Address);
+    if (parsed.interface.PrivateKey) exit.s2Private = parsed.interface.PrivateKey;
+    if (parsed.interface.ListenPort) exit.port = parsed.interface.ListenPort;
+    if (parsed.interface.MTU) exit.s2Mtu = parsed.interface.MTU;
+    if (peer.PublicKey) exit.s1Public = peer.PublicKey;
+    if (peer.PresharedKey) exit.psk2 = peer.PresharedKey;
+  }
+
+  renderExtraExits();
+}
+
+function createExtraField(exit, field, labelText, type = "text", placeholder = "") {
+  const label = document.createElement("label");
+  label.textContent = labelText;
+  const input = document.createElement("input");
+  input.type = type;
+  input.value = exit[field] || "";
+  input.placeholder = placeholder;
+  if (type === "number") input.min = field === "priority" ? "1" : "1";
+  input.addEventListener("input", () => updateExtraExit(exit.id, field, input.value));
+  label.appendChild(input);
+  return label;
+}
+
+function renderExtraExits() {
+  const root = $("extra-exits");
+  root.innerHTML = "";
+
+  state.extraExits.forEach((exit) => {
+    const card = document.createElement("div");
+    card.className = "import-box extra-exit-card";
+
+    const head = document.createElement("div");
+    head.className = "extra-exit-head";
+    const title = document.createElement("h3");
+    title.textContent = exit.label || ("Server2 #" + exit.id);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "danger small";
+    remove.textContent = tr("Удалить", "Remove");
+    remove.addEventListener("click", () => {
+      state.extraExits = state.extraExits.filter((item) => item.id !== exit.id);
+      renderExtraExits();
+    });
+    head.appendChild(title);
+    head.appendChild(remove);
+    card.appendChild(head);
+
+    const grid = document.createElement("div");
+    grid.className = "grid form-grid";
+    [
+      ["label", tr("Имя/метка", "Name/label"), "text", "backup-eu"],
+      ["priority", tr("Приоритет (меньше = выше)", "Priority (lower = preferred)"), "number", "20"],
+      ["s1Interface", tr("Интерфейс Server1", "Server1 interface"), "text", "wg-exit2"],
+      ["s1Address", "Server1 wg-exit Address", "text", "10.10.20.1/30"],
+      ["s2Address", "Server2 wg-exit Address", "text", "10.10.20.2/30"],
+      ["endpoint", tr("Публичный endpoint Server2", "Server2 public endpoint"), "text", "vpn2.example.net"],
+      ["port", "wg-exit UDP port", "number", "51830"],
+      ["s2Wan", "Server2 WAN interface", "text", "eth0"],
+      ["s1Mtu", "Server1 MTU (optional)", "number", "1420"],
+      ["s2Mtu", "Server2 MTU (optional)", "number", "1420"]
+    ].forEach(([field, labelText, type, placeholder]) => grid.appendChild(createExtraField(exit, field, labelText, type, placeholder)));
+    card.appendChild(grid);
+
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = tr("WireGuard ключи и импорт конфигов", "WireGuard keys and config import");
+    details.appendChild(summary);
+
+    const importGrid = document.createElement("div");
+    importGrid.className = "grid two";
+
+    for (const side of ["s1", "s2"]) {
+      const box = document.createElement("div");
+      box.className = "import-box";
+      const h = document.createElement("h4");
+      h.textContent = side === "s1" ? "Server1 side" : "Server2 side";
+      const file = document.createElement("input");
+      file.type = "file";
+      file.accept = ".conf,.txt";
+      const ta = document.createElement("textarea");
+      ta.rows = 7;
+      ta.spellcheck = false;
+      ta.value = side === "s1" ? exit.s1Text : exit.s2Text;
+      ta.placeholder = side === "s1" ? "wg-exit.conf on Server1" : "wg-exit.conf on Server2";
+      ta.addEventListener("input", () => updateExtraExit(exit.id, side === "s1" ? "s1Text" : "s2Text", ta.value));
+      file.addEventListener("change", async () => {
+        const selected = file.files && file.files[0];
+        if (!selected) return;
+        const text = await selected.text();
+        ta.value = text;
+        parseExtraExitSide(exit.id, side, text);
+      });
+      const parse = document.createElement("button");
+      parse.type = "button";
+      parse.className = "secondary";
+      parse.textContent = tr("Разобрать", "Parse");
+      parse.addEventListener("click", () => parseExtraExitSide(exit.id, side, ta.value));
+      box.appendChild(h);
+      box.appendChild(file);
+      box.appendChild(ta);
+      box.appendChild(parse);
+      importGrid.appendChild(box);
+    }
+    details.appendChild(importGrid);
+
+    const keyGrid = document.createElement("div");
+    keyGrid.className = "grid form-grid";
+    [
+      ["s1Private", "Server1 PrivateKey"],
+      ["s1Public", "Server1 PublicKey"],
+      ["s2Private", "Server2 PrivateKey"],
+      ["s2Public", "Server2 PublicKey"],
+      ["psk1", "Server1 Peer PresharedKey"],
+      ["psk2", "Server2 Peer PresharedKey"]
+    ].forEach(([field, labelText]) => {
+      const label = document.createElement("label");
+      label.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = $("show-secrets").checked ? "text" : "password";
+      input.autocomplete = "off";
+      input.value = exit[field] || "";
+      input.addEventListener("input", () => updateExtraExit(exit.id, field, input.value));
+      label.appendChild(input);
+      keyGrid.appendChild(label);
+    });
+    details.appendChild(keyGrid);
+    card.appendChild(details);
+    root.appendChild(card);
+  });
+}
+
+function getExitConfigs() {
+  const primary = {
+    id: 1,
+    label: "Server2 #1",
+    priority: Number(value("s2-priority")),
+    s1Interface: value("s1-exit-if"),
+    s1Address: value("s1-address"),
+    s2Address: value("s2-address"),
+    endpoint: value("s2-endpoint"),
+    port: value("wg-port"),
+    s1Private: value("s1-private"),
+    s1Public: value("s1-public"),
+    s2Private: value("s2-private"),
+    s2Public: value("s2-public"),
+    psk1: value("s1-psk"),
+    psk2: value("s2-psk"),
+    s1Mtu: value("s1-mtu"),
+    s2Mtu: value("s2-mtu"),
+    s2Wan: value("s2-wan"),
+    outputDir: "server2"
+  };
+
+  const extras = state.extraExits.map((exit, index) => Object.assign({}, exit, {
+    priority: Number(exit.priority),
+    outputDir: "server2-" + (index + 2)
+  }));
+
+  return [primary, ...extras];
+}
+
+function validateExit(exit, add) {
+  const prefix = exit.label || ("Server2 #" + exit.id);
+  const s1 = parseCidr(exit.s1Address);
+  const s2 = parseCidr(exit.s2Address);
+
+  if (!Number.isInteger(exit.priority) || exit.priority < 1) add("bad", prefix + ": приоритет должен быть положительным целым", prefix + ": priority must be a positive integer");
+  if (!validLinuxInterface(exit.s1Interface)) add("bad", prefix + ": неверное имя интерфейса Server1", prefix + ": invalid Server1 interface name");
+  if (!s1 || !s2 || !sameSubnet(exit.s1Address, exit.s2Address)) add("bad", prefix + ": адреса wg-exit должны быть в одной IPv4 подсети", prefix + ": wg-exit addresses must share one IPv4 subnet");
+  if (!validEndpointHost(exit.endpoint)) add("bad", prefix + ": неверный endpoint", prefix + ": invalid endpoint");
+
+  const port = Number(exit.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) add("bad", prefix + ": UDP port должен быть 1..65535", prefix + ": UDP port must be 1..65535");
+
+  if (!validLinuxInterface(exit.s2Wan)) add("bad", prefix + ": неверный Server2 WAN interface", prefix + ": invalid Server2 WAN interface");
+  if (!validWgKey(exit.s1Private)) add("bad", prefix + ": неверный Server1 PrivateKey", prefix + ": invalid Server1 PrivateKey");
+  if (!validWgKey(exit.s1Public)) add("bad", prefix + ": неверный Server1 PublicKey", prefix + ": invalid Server1 PublicKey");
+  if (!validWgKey(exit.s2Private)) add("bad", prefix + ": неверный Server2 PrivateKey", prefix + ": invalid Server2 PrivateKey");
+  if (!validWgKey(exit.s2Public)) add("bad", prefix + ": неверный Server2 PublicKey", prefix + ": invalid Server2 PublicKey");
+
+  if (exit.psk1 || exit.psk2) {
+    if (!validWgKey(exit.psk1) || !validWgKey(exit.psk2)) add("bad", prefix + ": PresharedKey должен быть задан с обеих сторон", prefix + ": PresharedKey must be present on both sides");
+    else if (exit.psk1 !== exit.psk2) add("bad", prefix + ": PresharedKey не совпадает", prefix + ": PresharedKey values do not match");
+  }
+
+  for (const [label, mtu] of [["Server1 MTU", exit.s1Mtu], ["Server2 MTU", exit.s2Mtu]]) {
+    if (!mtu) continue;
+    const n = Number(mtu);
+    if (!Number.isInteger(n) || n < 576 || n > 65535) add("bad", prefix + ": " + label + " должен быть 576..65535", prefix + ": " + label + " must be 576..65535");
+  }
 }
 
 async function readSelectedFile(inputId, textareaId, role) {
