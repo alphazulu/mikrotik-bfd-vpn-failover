@@ -49,13 +49,27 @@ Server1
 
 - импортировать конфигурации WireGuard/AmneziaWG для Server1 и Server2;
 - опционально импортировать входящий AWG/WG-конфиг Server1;
-- автоматически извлекать внутренние tunnel IP, endpoint, UDP port и WireGuard keys;
+- автоматически извлекать внутренние tunnel IP, endpoint, UDP port, WireGuard keys, optional `PresharedKey` и MTU;
 - проверять, что Server1/Server2 находятся в одной wg-exit подсети;
 - проверять client subnet и BFD-параметры;
 - генерировать готовые конфиги Server1, Server2 и MikroTik;
-- генерировать BIRD/BFD, Linux policy routing, systemd units и event-driven conntrack cleanup;
+- генерировать BIRD/BFD, Linux policy routing, systemd units, persistent fallback NAT и event-driven conntrack cleanup;
 - формировать MikroTik `check-gateway=bfd` и очистку только `CM_VPN`;
-- скачивать отдельные файлы или весь комплект одним `.tar`.
+- скачивать отдельные файлы или весь комплект одним `.tar`;
+- сохранять source-specific NAT/forwarding для Server2 в `wg-exit.conf`, а fallback NAT Server1 — в отдельном systemd unit.
+
+### Автоматические проверки
+
+Для конфигуратора добавлен CI. При изменениях выполняются:
+
+- синтаксическая проверка JavaScript;
+- функциональные тесты импорта и генерации;
+- негативные тесты для неправильных подсетей, PSK и параметров;
+- проверка отсутствия runtime network/storage API;
+- проверка CSP `connect-src 'none'`;
+- `bird -p` для сгенерированных BIRD-конфигов;
+- `wg-quick strip` для сгенерированных WireGuard-конфигов;
+- `bash -n` для shell-скрипта conntrack monitor.
 
 ### Приватность конфигуратора
 
