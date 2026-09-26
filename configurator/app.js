@@ -513,7 +513,7 @@ function generateFiles() {
 
   const routingTableClause = mtTable && mtTable !== "main" ? " routing-table=" + qRouter(mtTable) : "";
   const routingTableEnsure = mtTable && mtTable !== "main"
-    ? "/routing table\n:if ([:len [find where name=" + qRouter(mtTable) + "]] = 0) do={ add fib name=" + qRouter(mtTable) + " }\n\n"
+    ? ":if ([:len [/routing table find where name=" + qRouter(mtTable) + "]] = 0) do={ /routing table add fib name=" + qRouter(mtTable) + " }\n\n"
     : "";
 
   let mikrotikPolicyBlock = "";
