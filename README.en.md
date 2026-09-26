@@ -49,13 +49,27 @@ It can:
 
 - import WireGuard/AmneziaWG configurations for Server1 and Server2;
 - optionally import the incoming AWG/WG Server1 configuration;
-- extract internal tunnel IPs, endpoint, UDP port and WireGuard keys;
+- extract internal tunnel IPs, endpoint, UDP port, WireGuard keys, optional `PresharedKey` and MTU;
 - validate that Server1 and Server2 are in the same wg-exit subnet;
 - validate client subnet and BFD parameters;
 - generate ready-to-use Server1, Server2 and MikroTik configurations;
-- generate BIRD/BFD, Linux policy routing, systemd units and event-driven conntrack cleanup;
+- generate BIRD/BFD, Linux policy routing, systemd units, persistent fallback NAT and event-driven conntrack cleanup;
 - generate MikroTik `check-gateway=bfd` and selective `CM_VPN` cleanup;
-- download individual files or the complete generated set as a `.tar`.
+- download individual files or the complete generated set as a `.tar`;
+- keep source-specific Server2 NAT/forwarding in `wg-exit.conf` and Server1 fallback NAT in a dedicated systemd unit.
+
+### Automated checks
+
+The configurator has CI coverage. Changes run:
+
+- JavaScript syntax validation;
+- functional import/generation tests;
+- negative tests for invalid subnets, PSK and parameters;
+- checks that runtime network/storage APIs are absent;
+- CSP `connect-src 'none'` verification;
+- `bird -p` against generated BIRD configs;
+- `wg-quick strip` against generated WireGuard configs;
+- `bash -n` against the generated conntrack monitor.
 
 ### Configurator privacy
 
