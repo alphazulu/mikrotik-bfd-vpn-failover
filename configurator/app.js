@@ -1417,27 +1417,11 @@ ${mikrotikPolicyBlock}`;
 Конфиги содержат реальные импортированные WireGuard PrivateKey.
 Храните скачанный архив как секрет.
 
-SERVER2
--------
-1. Установить:
-   apt update && apt install -y wireguard bird2 conntrack
+${server2InstallRu}
 
-2. Включить forwarding:
-   sysctl -w net.ipv4.ip_forward=1
-
-3. Установить файлы:
-   server2/wg-exit.conf -> /etc/wireguard/wg-exit.conf
-   server2/bird.conf    -> /etc/bird/bird.conf
-
-4. NAT и FORWARD:
-   Нужные source-specific MASQUERADE и FORWARD rules уже находятся
-   в server2/wg-exit.conf как PostUp/PostDown. Отдельно добавлять
-   широкий POSTROUTING -o ${s2Wan} -j MASQUERADE не требуется.
-
-5. Запустить:
-   systemctl enable --now wg-quick@wg-exit
-   systemctl enable bird
-   systemctl restart bird
+ПОРЯДОК ВЫХОДОВ
+---------------
+${exitOrderRu}
 
 SERVER1
 -------
@@ -1502,27 +1486,11 @@ IMPORTANT
 The generated configs contain the imported WireGuard PrivateKey values.
 Treat the downloaded archive as a secret.
 
-SERVER2
--------
-1. Install:
-   apt update && apt install -y wireguard bird2 conntrack
+${server2InstallEn}
 
-2. Enable forwarding:
-   sysctl -w net.ipv4.ip_forward=1
-
-3. Install:
-   server2/wg-exit.conf -> /etc/wireguard/wg-exit.conf
-   server2/bird.conf    -> /etc/bird/bird.conf
-
-4. NAT and FORWARD:
-   The required source-specific MASQUERADE and FORWARD rules are already
-   included in server2/wg-exit.conf as PostUp/PostDown commands. Do not
-   add a second broad POSTROUTING -o ${s2Wan} -j MASQUERADE rule.
-
-5. Start:
-   systemctl enable --now wg-quick@wg-exit
-   systemctl enable bird
-   systemctl restart bird
+EXIT ORDER
+----------
+${exitOrderEn}
 
 SERVER1
 -------
