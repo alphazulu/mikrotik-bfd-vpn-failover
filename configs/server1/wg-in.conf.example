@@ -1,0 +1,24 @@
+[Interface]
+Address = <WG_IN_SERVER_ADDRESS>
+ListenPort = <WG_IN_PORT>
+PrivateKey = <WG_IN_PRIVATE_KEY>
+
+# Keep wg-in client traffic in the same policy table used by awg0.
+PostUp = ip rule show | grep -Fq "iif %i lookup <LINUX_POLICY_TABLE>" || ip rule add priority 1001 iif %i lookup <LINUX_POLICY_TABLE>
+PreDown = ip rule del priority 1001 iif %i lookup <LINUX_POLICY_TABLE> 2>/dev/null || true
+
+# Block same-interface client-to-client forwarding, allow client egress,
+# and allow established return traffic.
+PostUp = iptables -C FORWARD -i %i -o %i -m comment --comment wg-in-failover -j DROP 2>/dev/null || iptables -I FORWARD 1 -i %i -o %i -m comment --comment wg-in-failover -j DROP
+PostUp = iptables -C FORWARD -i %i -m comment --comment wg-in-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -i %i -m comment --comment wg-in-failover -j ACCEPT
+PostUp = iptables -C FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-in-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 3 -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-in-failover -j ACCEPT
+
+PreDown = iptables -D FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-in-failover -j ACCEPT 2>/dev/null || true
+PreDown = iptables -D FORWARD -i %i -m comment --comment wg-in-failover -j ACCEPT 2>/dev/null || true
+PreDown = iptables -D FORWARD -i %i -o %i -m comment --comment wg-in-failover -j DROP 2>/dev/null || true
+
+[Peer]
+PublicKey = <WG_IN_PEER_PUBLIC_KEY>
+# Optional:
+# PresharedKey = <WG_IN_PRESHARED_KEY>
+AllowedIPs = <WG_IN_PEER_ALLOWED_IPS>
