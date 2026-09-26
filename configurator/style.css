@@ -69,6 +69,7 @@ main {
 
 .grid { display: grid; gap: .85rem; }
 .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .import-box {
   background: var(--card2);
@@ -190,7 +191,25 @@ footer {
 }
 
 @media (max-width: 900px) {
-  .grid.three, .form-grid { grid-template-columns: 1fr; }
+  .grid.three, .grid.two, .form-grid { grid-template-columns: 1fr; }
   .topbar, .privacy, .results-head { flex-direction: column; }
   .topbar { position: static; }
+}
+
+.multi-exit-head, .extra-exit-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.extra-exits {
+  display: grid;
+  gap: 1rem;
+  margin: .8rem 0 1rem;
+}
+.extra-exit-card {
+  border-color: #41577f;
+}
+.extra-exit-card h3, .extra-exit-card h4 {
+  margin-top: 0;
 }
