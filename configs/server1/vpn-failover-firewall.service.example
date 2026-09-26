@@ -1,0 +1,15 @@
+[Unit]
+Description=Persistent fallback NAT for VPN client traffic
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '/usr/sbin/iptables -t nat -C POSTROUTING -s <AWG_NET> -o <SERVER1_WAN_IF> -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || /usr/sbin/iptables -t nat -A POSTROUTING -s <AWG_NET> -o <SERVER1_WAN_IF> -m comment --comment vpn-failover-fallback -j MASQUERADE'
+ExecStop=/bin/sh -c '/usr/sbin/iptables -t nat -D POSTROUTING -s <AWG_NET> -o <SERVER1_WAN_IF> -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || true'
+
+# If <WG_IN_NET> is used, add matching ExecStart/ExecStop rules for that subnet.
+
+[Install]
+WantedBy=multi-user.target
