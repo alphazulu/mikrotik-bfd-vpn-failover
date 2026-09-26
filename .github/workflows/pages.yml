@@ -40,3 +40,17 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Smoke test deployed page
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsSL "$PAGE_URL" | grep -q "MikroTik BFD VPN Failover"; then
+              echo "GitHub Pages smoke test: OK"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "GitHub Pages smoke test failed"
+          exit 1
