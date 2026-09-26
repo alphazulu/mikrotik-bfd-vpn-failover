@@ -1,3 +1,8 @@
+# Single-exit template.
+# For multiple Server2 nodes, create one file per exit (wg-exit.conf,
+# wg-exit2.conf, ...) with a unique transfer subnet and use the browser
+# configurator or docs/MULTI_EXIT.md for ordered priority routing.
+
 [Interface]
 Address = <WG_EXIT_S1_IP>/<WG_EXIT_PREFIX>
 PrivateKey = <SERVER1_WG_EXIT_PRIVATE_KEY>
