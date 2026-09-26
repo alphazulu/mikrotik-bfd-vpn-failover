@@ -1,0 +1,54 @@
+name: Test configurator
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "configurator/**"
+      - "tests/**"
+      - ".github/workflows/test.yml"
+  pull_request:
+    paths:
+      - "configurator/**"
+      - "tests/**"
+      - ".github/workflows/test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: JavaScript syntax
+        run: node --check configurator/app.js
+
+      - name: Unit and privacy tests
+        run: node tests/configurator.mjs
+
+      - name: Install config validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bird2 wireguard-tools
+
+      - name: Validate generated BIRD configs
+        run: |
+          bird -p -c tests/.generated/server1-bird.conf
+          bird -p -c tests/.generated/server2-bird.conf
+
+      - name: Validate generated WireGuard configs
+        run: |
+          wg-quick strip tests/.generated/server1-wg-exit.conf >/dev/null
+          wg-quick strip tests/.generated/server2-wg-exit.conf >/dev/null
+
+      - name: Validate generated shell
+        run: bash -n tests/.generated/vpn-exit-monitor.sh
