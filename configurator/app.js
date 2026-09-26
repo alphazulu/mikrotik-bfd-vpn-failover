@@ -1195,35 +1195,62 @@ ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i ${awgIf} -o ${awgIf} -m co
 WantedBy=multi-user.target
 `;
 
+  const tableList = exits.map((exit) => exit.tableId).join(" ");
   files["server1/vpn-exit-monitor.sh"] =
 `#!/bin/bash
 set -u
 
 TAG="vpn-exit-monitor"
+TABLES=(${tableList})
 
 flush_vpn_conntrack() {
     logger -t "$TAG" "Flushing VPN conntrack"
     conntrack -D -s ${awgNet} >/dev/null 2>&1 || true${monitorExtra}
 }
 
+selected_exit() {
+    local table route
+    for table in "\${TABLES[@]}"; do
+        route="$(ip -4 route show table "$table" default proto bird 2>/dev/null | head -n 1)"
+        if [[ -n "$route" ]]; then
+            printf '%s|%s\n' "$table" "$route"
+            return
+        fi
+    done
+    printf 'main\n'
+}
+
+last_exit="$(selected_exit)"
+logger -t "$TAG" "Initial selected exit: $last_exit"
+
 ip monitor route | while IFS= read -r line
 do
     case "$line" in
-        "Deleted default via ${s2Ip} dev wg-exit table ${table} proto bird"*)
-            logger -t "$TAG" "VPN exit DOWN: $line"
-            flush_vpn_conntrack
-            ;;
-        "default via ${s2Ip} dev wg-exit table ${table} proto bird"*)
-            logger -t "$TAG" "VPN exit UP: $line"
-            flush_vpn_conntrack
+        *default*" proto bird"*)
+            relevant=0
+            for table in "\${TABLES[@]}"; do
+                if [[ "$line" == *" table $table "* ]]; then
+                    relevant=1
+                    break
+                fi
+            done
+            [[ "$relevant" -eq 1 ]] || continue
+
+            # Coalesce BIRD delete/add route events before selecting the active exit.
+            sleep 0.1
+            current_exit="$(selected_exit)"
+            if [[ "$current_exit" != "$last_exit" ]]; then
+                logger -t "$TAG" "Selected VPN exit changed: $last_exit -> $current_exit"
+                flush_vpn_conntrack
+                last_exit="$current_exit"
+            fi
             ;;
     esac
 done
 `;
-
   files["server1/vpn-exit-monitor.service"] =
 `[Unit]
-Description=Monitor BIRD VPN exit route and flush VPN conntrack
+Description=Monitor selected BIRD VPN exit and flush VPN conntrack on path changes
 After=network-online.target bird.service
 Wants=network-online.target bird.service
 
