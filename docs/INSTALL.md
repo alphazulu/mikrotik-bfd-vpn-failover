@@ -151,7 +151,7 @@ Create `/etc/bird/bird.conf` from `configs/server1/bird.conf.example`.
 Key route:
 
 ```bird
-route 0.0.0.0/0 via <WG_EXIT_S2_IP> dev "wg-exit" bfd;
+route 0.0.0.0/0 via <WG_EXIT_S2_IP> bfd;
 ```
 
 Validate and inspect:
