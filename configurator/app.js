@@ -1353,6 +1353,61 @@ ${mikrotikPolicyBlock}`;
     ? "\n   systemctl enable --now wg-quick@" + wgInIf
     : "";
 
+  const server1ExitInstallRu = exits.map((exit) =>
+    "   server1/" + exit.s1Interface + ".conf -> /etc/wireguard/" + exit.s1Interface + ".conf").join("\n");
+  const server1ExitInstallEn = server1ExitInstallRu;
+  const server1ExitChmodRu = exits.map((exit) => "   chmod 600 /etc/wireguard/" + exit.s1Interface + ".conf").join("\n");
+  const server1ExitStartRu = exits.map((exit) => "   systemctl enable --now wg-quick@" + exit.s1Interface).join("\n");
+  const exitTableCheckRu = exits.map((exit) => "   ip route show table " + exit.tableId + "   # priority " + exit.priority + ", " + exit.label).join("\n");
+
+  const server2InstallRu = exits.map((exit) =>
+`SERVER2 ${exit.label} — priority ${exit.priority}
+----------------------------------------
+1. Установить:
+   apt update && apt install -y wireguard bird2 conntrack
+
+2. Включить forwarding:
+   sysctl -w net.ipv4.ip_forward=1
+
+3. Установить файлы из каталога ${exit.outputDir}:
+   ${exit.outputDir}/wg-exit.conf -> /etc/wireguard/wg-exit.conf
+   ${exit.outputDir}/bird.conf    -> /etc/bird/bird.conf
+
+4. NAT и FORWARD уже включены в wg-exit.conf как PostUp/PostDown.
+
+5. Запустить:
+   systemctl enable --now wg-quick@wg-exit
+   systemctl enable bird
+   systemctl restart bird
+`
+  ).join("\n");
+
+  const server2InstallEn = exits.map((exit) =>
+`SERVER2 ${exit.label} — priority ${exit.priority}
+----------------------------------------
+1. Install:
+   apt update && apt install -y wireguard bird2 conntrack
+
+2. Enable forwarding:
+   sysctl -w net.ipv4.ip_forward=1
+
+3. Install files from ${exit.outputDir}:
+   ${exit.outputDir}/wg-exit.conf -> /etc/wireguard/wg-exit.conf
+   ${exit.outputDir}/bird.conf    -> /etc/bird/bird.conf
+
+4. NAT and FORWARD are already included in wg-exit.conf as PostUp/PostDown.
+
+5. Start:
+   systemctl enable --now wg-quick@wg-exit
+   systemctl enable bird
+   systemctl restart bird
+`
+  ).join("\n");
+
+  const exitOrderRu = exits.map((exit) =>
+    "   " + (exit.rank + 1) + ". priority " + exit.priority + " -> " + exit.label +
+    " via " + exit.s1Interface + ", Linux table " + exit.tableId).join("\n");
+  const exitOrderEn = exitOrderRu;
   files["INSTALL.txt"] = state.lang === "ru"
     ? `MikroTik BFD VPN Failover — сгенерированный комплект
 ==================================================
