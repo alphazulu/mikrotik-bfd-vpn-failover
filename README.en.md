@@ -55,6 +55,7 @@ It can:
 - generate ready-to-use Server1, Server2 and MikroTik configurations;
 - generate BIRD/BFD, Linux policy routing, systemd units, persistent Server1 FORWARD/fallback NAT and event-driven conntrack cleanup;
 - generate MikroTik `check-gateway=bfd` and selective `CM_VPN` cleanup;
+- optionally create a dedicated RouterOS routing table and mangle policy routing for one or more `dst-address-list` values;
 - download individual files or the complete generated set as a `.tar`;
 - keep source-specific Server2 NAT/forwarding in `wg-exit.conf` and Server1 fallback NAT in a dedicated systemd unit.
 
