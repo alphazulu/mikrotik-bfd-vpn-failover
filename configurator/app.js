@@ -908,6 +908,13 @@ add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack start-time=startup
 ${mikrotikPolicyBlock}`;
   }
 
+  const mtModeInstallRu = mtPolicyMode === "direct"
+    ? "Режим MikroTik: прямые маршруты в main. Mangle/connection-mark и selective conntrack cleanup на MikroTik не создаются."
+    : "Режим MikroTik: address-list + mangle + отдельная routing table с selective conntrack cleanup по connection-mark.";
+  const mtModeInstallEn = mtPolicyMode === "direct"
+    ? "MikroTik mode: direct routes in main. No mangle/connection-mark or selective MikroTik conntrack cleanup is generated."
+    : "MikroTik mode: address-list + mangle + dedicated routing table with selective conntrack cleanup by connection-mark.";
+
   const wgInInstallRu = hasWgInConfig
     ? "\n   server1/wg-in.conf                   -> /etc/wireguard/" + wgInIf + ".conf"
     : "";
@@ -1003,8 +1010,9 @@ Failover test:
 
 MIKROTIK
 --------
+${mtModeInstallRu}
 Проверьте mikrotik/bfd-failover.rsc перед импортом.
-Если route с comment=VPN_BFD_PRIMARY уже существует, не создавайте дубликат — перенесите check-gateway=bfd/comment в существующий маршрут.
+Не создавайте дубликаты уже существующих адресов, BFD-конфигураций или маршрутов.
 `
     : `MikroTik BFD VPN Failover — generated bundle
 =================================================
@@ -1072,8 +1080,9 @@ Failover on Server2:
 
 MIKROTIK
 --------
+${mtModeInstallEn}
 Review mikrotik/bfd-failover.rsc before import.
-If the monitored route already exists, do not create a duplicate; apply check-gateway=bfd and the VPN_BFD_PRIMARY comment to the existing route.
+Do not duplicate existing addresses, BFD configuration entries, or routes.
 `;
 
   state.generated = files;
@@ -1251,7 +1260,7 @@ function clearAll() {
    "s1-private", "s1-public", "s2-private", "s2-public", "s1-psk", "s2-psk",
    "wg-in-private", "wg-in-peer-public", "wg-in-psk", "wg-in-address", "wg-in-port",
    "wg-in-peer-allowed", "s1-mtu", "s2-mtu", "awg-server", "awg-mt", "awg-net",
-   "wg-in-net", "mt-address-lists"].forEach((id) => { $(id).value = ""; });
+   "wg-in-net", "mt-address-lists", "mt-direct-routes"].forEach((id) => { $(id).value = ""; });
 
   ["file-s1", "file-s2", "file-in", "file-wgin"].forEach((id) => { $(id).value = ""; });
 
@@ -1271,6 +1280,7 @@ function clearAll() {
   $("results-card").classList.add("hidden");
   state.generated = {};
   state.currentFile = null;
+  updateMikrotikMode();
 }
 
 $("lang-ru").addEventListener("click", () => setLanguage("ru"));
@@ -1285,6 +1295,7 @@ $("parse-s1").addEventListener("click", () => importConfig("s1", $("paste-s1").v
 $("parse-s2").addEventListener("click", () => importConfig("s2", $("paste-s2").value));
 $("parse-in").addEventListener("click", () => importConfig("in", $("paste-in").value));
 $("parse-wgin").addEventListener("click", () => importConfig("wgin", $("paste-wgin").value));
+$("mt-policy-mode").addEventListener("change", updateMikrotikMode);
 
 $("validate").addEventListener("click", validate);
 $("generate").addEventListener("click", generateFiles);
@@ -1302,3 +1313,4 @@ Object.entries(defaults).forEach(([id, val]) => {
 
 setLanguage("ru");
 updateSecretVisibility();
+updateMikrotikMode();
