@@ -72,6 +72,8 @@
         <label>wg-exit UDP port<input id="wg-port" type="number" min="1" max="65535" value="51830"></label>
         <label>Server1 WAN interface<input id="s1-wan" type="text" value="eth0"></label>
         <label>Server2 WAN interface<input id="s2-wan" type="text" value="eth0"></label>
+        <label>Server1 wg-exit MTU <span class="optional">(optional)</span><input id="s1-mtu" type="number" min="576" max="65535" placeholder="1420"></label>
+        <label>Server2 wg-exit MTU <span class="optional">(optional)</span><input id="s2-mtu" type="number" min="576" max="65535" placeholder="1420"></label>
       </div>
 
       <details>
@@ -81,6 +83,8 @@
           <label>Server1 PublicKey<input id="s1-public" type="password" autocomplete="off"></label>
           <label>Server2 PrivateKey<input id="s2-private" type="password" autocomplete="off"></label>
           <label>Server2 PublicKey<input id="s2-public" type="password" autocomplete="off"></label>
+          <label>Server1 Peer PresharedKey <span class="optional">(optional)</span><input id="s1-psk" type="password" autocomplete="off"></label>
+          <label>Server2 Peer PresharedKey <span class="optional">(optional)</span><input id="s2-psk" type="password" autocomplete="off"></label>
         </div>
         <label class="check"><input id="show-secrets" type="checkbox"><span data-ru="Показывать ключи в полях и предпросмотре" data-en="Show keys in fields and previews">Показывать ключи в полях и предпросмотре</span></label>
       </details>
@@ -134,7 +138,7 @@
     <section class="card">
       <h2 data-ru="Что именно генерируется" data-en="What is generated">Что именно генерируется</h2>
       <ul>
-        <li>Server1: <code>wg-exit.conf</code>, <code>bird.conf</code>, policy-routing systemd unit, conntrack monitor и service.</li>
+        <li>Server1: <code>wg-exit.conf</code>, <code>bird.conf</code>, policy-routing systemd unit, persistent fallback NAT service, conntrack monitor и service.</li>
         <li>Server2: <code>wg-exit.conf</code>, <code>bird.conf</code>.</li>
         <li>MikroTik: BFD + <code>check-gateway=bfd</code> + stateful cleanup <code>CM_VPN</code>.</li>
         <li><code>INSTALL.txt</code> с командами установки, NAT и проверками.</li>
