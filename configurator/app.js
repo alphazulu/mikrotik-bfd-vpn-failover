@@ -932,7 +932,7 @@ function generateFiles() {
 
   const files = {};
 
-  files["server1/wg-exit.conf"] =
+  files["server1/" + s1ExitIf + ".conf"] =
 `[Interface]
 Address = ${s1Addr}
 PrivateKey = ${s1Private}${s1MtuLine}
