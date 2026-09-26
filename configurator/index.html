@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; child-src 'none'; media-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>VPN Failover Configurator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1 data-ru="MikroTik BFD VPN Failover — конфигуратор" data-en="MikroTik BFD VPN Failover — Configurator">MikroTik BFD VPN Failover — конфигуратор</h1>
+      <p class="subtitle" data-ru="Генерация конфигурации Server1 / Server2 / MikroTik полностью в браузере" data-en="Generate Server1 / Server2 / MikroTik configuration entirely in your browser">Генерация конфигурации Server1 / Server2 / MikroTik полностью в браузере</p>
+    </div>
+    <div class="toolbar">
+      <button id="lang-ru" class="small active" type="button">RU</button>
+      <button id="lang-en" class="small" type="button">EN</button>
+      <a class="button small secondary" href="https://github.com/alphazulu/mikrotik-bfd-vpn-failover" target="_blank" rel="noreferrer noopener">GitHub</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="privacy">
+      <div>
+        <strong data-ru="🔒 Локальная обработка" data-en="🔒 Local processing">🔒 Локальная обработка</strong>
+        <p data-ru="Выбранные файлы и ключи читаются только JavaScript-кодом этой вкладки. CSP запрещает приложению любые сетевые подключения: connect-src 'none'. Данные не сохраняются в cookies, localStorage, sessionStorage или IndexedDB." data-en="Selected files and keys are read only by JavaScript in this tab. CSP blocks all application network connections with connect-src 'none'. Data is not stored in cookies, localStorage, sessionStorage or IndexedDB.">Выбранные файлы и ключи читаются только JavaScript-кодом этой вкладки. CSP запрещает приложению любые сетевые подключения: connect-src 'none'. Данные не сохраняются в cookies, localStorage, sessionStorage или IndexedDB.</p>
+      </div>
+      <button id="privacy-check" class="secondary" type="button" data-ru="Проверить режим" data-en="Check privacy mode">Проверить режим</button>
+    </section>
+
+    <section class="card">
+      <h2 data-ru="1. Импорт WireGuard / AmneziaWG конфигураций" data-en="1. Import WireGuard / AmneziaWG configurations">1. Импорт WireGuard / AmneziaWG конфигураций</h2>
+      <p class="hint" data-ru="Поддерживаются обычные INI-поля WireGuard. Неизвестные AmneziaWG-параметры безопасно игнорируются. Версия 1 генерирует IPv4-схему." data-en="Standard WireGuard INI fields are supported. Unknown AmneziaWG parameters are safely ignored. Version 1 generates an IPv4 design.">Поддерживаются обычные INI-поля WireGuard. Неизвестные AmneziaWG-параметры безопасно игнорируются. Версия 1 генерирует IPv4-схему.</p>
+
+      <div class="grid three">
+        <div class="import-box">
+          <h3>Server1 — wg-exit</h3>
+          <input id="file-s1" type="file" accept=".conf,.txt">
+          <textarea id="paste-s1" rows="8" spellcheck="false" data-placeholder-ru="или вставьте wg-exit.conf Server1 сюда" data-placeholder-en="or paste Server1 wg-exit.conf here" placeholder="или вставьте wg-exit.conf Server1 сюда"></textarea>
+          <button id="parse-s1" type="button" data-ru="Разобрать Server1" data-en="Parse Server1">Разобрать Server1</button>
+          <div id="status-s1" class="status neutral">—</div>
+        </div>
+
+        <div class="import-box">
+          <h3>Server2 — wg-exit</h3>
+          <input id="file-s2" type="file" accept=".conf,.txt">
+          <textarea id="paste-s2" rows="8" spellcheck="false" data-placeholder-ru="или вставьте wg-exit.conf Server2 сюда" data-placeholder-en="or paste Server2 wg-exit.conf here" placeholder="или вставьте wg-exit.conf Server2 сюда"></textarea>
+          <button id="parse-s2" type="button" data-ru="Разобрать Server2" data-en="Parse Server2">Разобрать Server2</button>
+          <div id="status-s2" class="status neutral">—</div>
+        </div>
+
+        <div class="import-box">
+          <h3 data-ru="Входящий AWG/WG на Server1 — опционально" data-en="Incoming AWG/WG on Server1 — optional">Входящий AWG/WG на Server1 — опционально</h3>
+          <input id="file-in" type="file" accept=".conf,.txt">
+          <textarea id="paste-in" rows="8" spellcheck="false" data-placeholder-ru="можно импортировать адрес Server1 и peer /32" data-placeholder-en="can infer Server1 address and a peer /32" placeholder="можно импортировать адрес Server1 и peer /32"></textarea>
+          <button id="parse-in" type="button" data-ru="Разобрать входящий VPN" data-en="Parse incoming VPN">Разобрать входящий VPN</button>
+          <div id="status-in" class="status neutral">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 data-ru="2. Параметры схемы" data-en="2. Topology parameters">2. Параметры схемы</h2>
+
+      <h3 data-ru="Межсерверный wg-exit" data-en="Inter-server wg-exit">Межсерверный wg-exit</h3>
+      <div class="grid form-grid">
+        <label>Server1 wg-exit Address<input id="s1-address" type="text" placeholder="10.0.0.1/30"></label>
+        <label>Server2 wg-exit Address<input id="s2-address" type="text" placeholder="10.0.0.2/30"></label>
+        <label data-ru="Публичный endpoint Server2" data-en="Server2 public endpoint">Публичный endpoint Server2<input id="s2-endpoint" type="text" placeholder="vpn2.example.net"></label>
+        <label>wg-exit UDP port<input id="wg-port" type="number" min="1" max="65535" value="51830"></label>
+        <label>Server1 WAN interface<input id="s1-wan" type="text" value="eth0"></label>
+        <label>Server2 WAN interface<input id="s2-wan" type="text" value="eth0"></label>
+      </div>
+
+      <details>
+        <summary data-ru="Ключи WireGuard (по умолчанию скрыты)" data-en="WireGuard keys (hidden by default)">Ключи WireGuard (по умолчанию скрыты)</summary>
+        <div class="grid form-grid">
+          <label>Server1 PrivateKey<input id="s1-private" type="password" autocomplete="off"></label>
+          <label>Server1 PublicKey<input id="s1-public" type="password" autocomplete="off"></label>
+          <label>Server2 PrivateKey<input id="s2-private" type="password" autocomplete="off"></label>
+          <label>Server2 PublicKey<input id="s2-public" type="password" autocomplete="off"></label>
+        </div>
+        <label class="check"><input id="show-secrets" type="checkbox"><span data-ru="Показывать ключи в полях и предпросмотре" data-en="Show keys in fields and previews">Показывать ключи в полях и предпросмотре</span></label>
+      </details>
+
+      <h3 data-ru="Входящий VPN Server1 / MikroTik" data-en="Server1 incoming VPN / MikroTik">Входящий VPN Server1 / MikroTik</h3>
+      <div class="grid form-grid">
+        <label>Server1 AWG IP<input id="awg-server" type="text" placeholder="10.1.0.1"></label>
+        <label>MikroTik AWG IP<input id="awg-mt" type="text" placeholder="10.1.0.4"></label>
+        <label data-ru="VPN client subnet" data-en="VPN client subnet">VPN client subnet<input id="awg-net" type="text" placeholder="10.1.0.0/24"></label>
+        <label data-ru="Дополнительный WG client subnet" data-en="Additional WG client subnet">Дополнительный WG client subnet<input id="wg-in-net" type="text" placeholder="optional"></label>
+        <label>Server1 AWG interface<input id="awg-if" type="text" value="awg0"></label>
+        <label>MikroTik interface<input id="mt-if" type="text" value="wg-awg-proxy-1"></label>
+      </div>
+
+      <h3 data-ru="Маршрутизация и BFD" data-en="Routing and BFD">Маршрутизация и BFD</h3>
+      <div class="grid form-grid">
+        <label>Linux routing table<input id="route-table" type="number" min="1" value="200"></label>
+        <label>MikroTik routing table<input id="mt-route-table" type="text" value="main"></label>
+        <label>MikroTik dst-address<input id="mt-dst" type="text" value="0.0.0.0/0"></label>
+        <label>Connection mark<input id="connmark" type="text" value="CM_VPN"></label>
+        <label>BFD interval, ms<input id="bfd-interval" type="number" min="50" value="500"></label>
+        <label>BFD multiplier<input id="bfd-multiplier" type="number" min="2" max="50" value="3"></label>
+      </div>
+
+      <div class="actions">
+        <button id="validate" class="secondary" type="button" data-ru="Проверить параметры" data-en="Validate parameters">Проверить параметры</button>
+        <button id="generate" type="button" data-ru="Сгенерировать конфигурации" data-en="Generate configurations">Сгенерировать конфигурации</button>
+        <button id="clear-all" class="danger" type="button" data-ru="Очистить всё из памяти вкладки" data-en="Clear all data from this tab">Очистить всё из памяти вкладки</button>
+      </div>
+      <div id="validation" class="validation"></div>
+    </section>
+
+    <section id="results-card" class="card hidden">
+      <div class="results-head">
+        <div>
+          <h2 data-ru="3. Готовые конфигурации" data-en="3. Generated configurations">3. Готовые конфигурации</h2>
+          <p class="hint" data-ru="Предпросмотр маскирует секреты, пока не включено «Показывать ключи». Скачиваемые файлы содержат реальные импортированные ключи." data-en="Preview masks secrets unless “Show keys” is enabled. Downloaded files contain the actual imported keys.">Предпросмотр маскирует секреты, пока не включено «Показывать ключи». Скачиваемые файлы содержат реальные импортированные ключи.</p>
+        </div>
+        <button id="download-all" type="button" data-ru="Скачать весь комплект .tar" data-en="Download complete .tar">Скачать весь комплект .tar</button>
+      </div>
+
+      <div id="result-tabs" class="tabs"></div>
+      <div class="file-actions">
+        <button id="copy-current" class="secondary" type="button" data-ru="Копировать" data-en="Copy">Копировать</button>
+        <button id="download-current" class="secondary" type="button" data-ru="Скачать файл" data-en="Download file">Скачать файл</button>
+      </div>
+      <pre id="preview"><code></code></pre>
+    </section>
+
+    <section class="card">
+      <h2 data-ru="Что именно генерируется" data-en="What is generated">Что именно генерируется</h2>
+      <ul>
+        <li>Server1: <code>wg-exit.conf</code>, <code>bird.conf</code>, policy-routing systemd unit, conntrack monitor и service.</li>
+        <li>Server2: <code>wg-exit.conf</code>, <code>bird.conf</code>.</li>
+        <li>MikroTik: BFD + <code>check-gateway=bfd</code> + stateful cleanup <code>CM_VPN</code>.</li>
+        <li><code>INSTALL.txt</code> с командами установки, NAT и проверками.</li>
+      </ul>
+    </section>
+
+    <dialog id="privacy-dialog">
+      <h2 data-ru="Проверка приватности" data-en="Privacy check">Проверка приватности</h2>
+      <pre id="privacy-report"></pre>
+      <button id="privacy-close" type="button" data-ru="Закрыть" data-en="Close">Закрыть</button>
+    </dialog>
+  </main>
+
+  <footer>
+    <span>MIT License · alphazulu · </span>
+    <span data-ru="Конфигуратор работает без серверной части" data-en="The configurator has no server-side component">Конфигуратор работает без серверной части</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
