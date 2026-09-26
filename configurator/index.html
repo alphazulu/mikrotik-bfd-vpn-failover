@@ -80,9 +80,20 @@
         <label>wg-exit UDP port<input id="wg-port" type="number" min="1" max="65535" value="51830"></label>
         <label>Server1 WAN interface<input id="s1-wan" type="text" value="eth0"></label>
         <label>Server2 WAN interface<input id="s2-wan" type="text" value="eth0"></label>
+        <label data-ru="Приоритет Server2 (меньше = выше)" data-en="Server2 priority (lower = preferred)">Приоритет Server2 (меньше = выше)<input id="s2-priority" type="number" min="1" value="10"></label>
+        <label data-ru="Интерфейс Server1 для этого выхода" data-en="Server1 interface for this exit">Интерфейс Server1 для этого выхода<input id="s1-exit-if" type="text" value="wg-exit"></label>
         <label>Server1 wg-exit MTU <span class="optional">(optional)</span><input id="s1-mtu" type="number" min="576" max="65535" placeholder="1420"></label>
         <label>Server2 wg-exit MTU <span class="optional">(optional)</span><input id="s2-mtu" type="number" min="576" max="65535" placeholder="1420"></label>
       </div>
+
+      <div class="multi-exit-head">
+        <div>
+          <h3 data-ru="Дополнительные Server2" data-en="Additional Server2 exits">Дополнительные Server2</h3>
+          <p class="hint" data-ru="Можно добавить несколько выходных серверов. Server1 поднимает отдельный WireGuard-интерфейс к каждому и использует их по приоритету: меньшее число — выше приоритет." data-en="You can add multiple exit servers. Server1 brings up a separate WireGuard interface to each and uses them in priority order: lower number means higher priority.">Можно добавить несколько выходных серверов. Server1 поднимает отдельный WireGuard-интерфейс к каждому и использует их по приоритету: меньшее число — выше приоритет.</p>
+        </div>
+        <button id="add-exit" type="button" class="secondary" data-ru="Добавить Server2" data-en="Add Server2">Добавить Server2</button>
+      </div>
+      <div id="extra-exits" class="extra-exits"></div>
 
       <details>
         <summary data-ru="Ключи WireGuard (по умолчанию скрыты)" data-en="WireGuard keys (hidden by default)">Ключи WireGuard (по умолчанию скрыты)</summary>
