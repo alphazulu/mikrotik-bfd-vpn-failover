@@ -1049,6 +1049,70 @@ protocol bfd bfd_exit {
 }
 `;
 
+  for (const exit of exits.filter((item) => item.id !== 1)) {
+    const pskLineExit = exit.psk1 && exit.psk2 && exit.psk1 === exit.psk2
+      ? "\nPresharedKey = " + exit.psk1
+      : "";
+    const s1MtuLineExit = exit.s1Mtu ? "\nMTU = " + exit.s1Mtu : "";
+    const s2MtuLineExit = exit.s2Mtu ? "\nMTU = " + exit.s2Mtu : "";
+
+    files["server1/" + exit.s1Interface + ".conf"] =
+`[Interface]
+Address = ${exit.s1Address}
+PrivateKey = ${exit.s1Private}${s1MtuLineExit}
+Table = off
+
+[Peer]
+PublicKey = ${exit.s2Public}${pskLineExit}
+Endpoint = ${exit.endpoint}:${exit.port}
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+`;
+
+    let extraNatUp = "";
+    let extraNatDown = "";
+    for (const clientNet of [awgNet, wgInNet].filter(Boolean)) {
+      extraNatUp += "PostUp = iptables -t nat -C POSTROUTING -s " + clientNet + " -o " + exit.s2Wan +
+        " -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s " +
+        clientNet + " -o " + exit.s2Wan + " -m comment --comment wg-exit-failover -j MASQUERADE\n";
+      extraNatDown += "PostDown = iptables -t nat -D POSTROUTING -s " + clientNet + " -o " + exit.s2Wan +
+        " -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || true\n";
+    }
+
+    files[exit.outputDir + "/wg-exit.conf"] =
+`[Interface]
+Address = ${exit.s2Address}
+ListenPort = ${exit.port}
+PrivateKey = ${exit.s2Private}${s2MtuLineExit}
+
+PostUp = iptables -C FORWARD -i %i -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i %i -m comment --comment wg-exit-failover -j ACCEPT
+PostUp = iptables -C FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT
+${extraNatUp}PostDown = iptables -D FORWARD -i %i -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || true
+${extraNatDown}
+[Peer]
+PublicKey = ${exit.s1Public}${pskLineExit}
+AllowedIPs = ${[exit.s1Ip + "/32", awgNet, wgInNet].filter(Boolean).join(", ")}
+`;
+
+    files[exit.outputDir + "/bird.conf"] =
+`router id ${exit.s2Ip};
+
+protocol device {
+}
+
+protocol bfd bfd_exit {
+    interface "wg-exit" {
+        interval ${bfd} ms;
+        idle tx interval ${bfd} ms;
+        multiplier ${mult};
+    };
+
+    neighbor ${exit.s1Ip} dev "wg-exit" local ${exit.s2Ip};
+}
+`;
+  }
+
   files["server1/awg-policy-routing.service"] =
 `[Unit]
 Description=Policy routing for VPN client traffic
