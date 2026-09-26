@@ -1,90 +1,273 @@
-# MikroTik → AmneziaWG → Ubuntu → WireGuard Exit with BFD Failover
+# MikroTik → AmneziaWG → Ubuntu → WireGuard Exit с BFD failover
 
-This repository documents a two-stage VPN routing design with automatic failover and failback.
+[English version](README.en.md)
 
-The design intentionally contains **no real public IP addresses, private keys, credentials, hostnames, or production identifiers**. Replace placeholders with local values before deployment.
-
-## Goal
-
-Traffic selected on a MikroTik router is sent through an AmneziaWG tunnel to **Server1**. Server1 normally forwards that traffic through a second WireGuard tunnel (`wg-exit`) to **Server2**, where it is NATed to the Internet.
-
-If Server2 or the WireGuard path to it becomes unavailable, BFD detects the failure and BIRD removes the default route from Linux routing table `200`. Linux policy routing then naturally falls through to Server1's normal `main` table, so traffic exits directly through Server1. When Server2 returns, BIRD restores the route and traffic automatically returns to Server2.
-
-Existing conntrack entries are flushed on both transitions so sessions are recreated through the currently active path instead of waiting for stale NAT/connection state to expire.
-
-## High-level topology
+Этот репозиторий описывает отказоустойчивую двухступенчатую схему маршрутизации VPN-трафика:
 
 ```text
 MikroTik
-   |
-   | AmneziaWG + BFD
-   v
+   │
+   │ AmneziaWG + BFD
+   ▼
 Server1
-   |\
-   | \ fallback: main table -> eth0 -> Internet
-   |
-   +-- policy table 200
-          |
-          | BFD-controlled default
-          v
-       wg-exit
-          |
-          v
-       Server2
-          |
-          | MASQUERADE
-          v
-       Internet
+   ├──────────── fallback ────────────► Internet
+   │             через eth0
+   │
+   └─ table 200 ─► wg-exit ─► Server2 ─► Internet
+                    BFD          NAT
 ```
 
-Normal path:
+Основной путь проходит через **Server2**. Если Server2 или туннель `wg-exit` становится недоступен, **BFD + BIRD** автоматически убирают default route из отдельной Linux routing table `200`, после чего policy routing естественным образом переключает трафик на обычный `main` route Server1. После восстановления Server2 маршрут возвращается автоматически.
+
+При каждом переходе **UP → DOWN** и **DOWN → UP** очищается только conntrack VPN-клиентов, поэтому старые NAT/connection states не мешают быстрому failover/failback.
+
+> В репозитории намеренно нет реальных публичных IP-адресов, приватных ключей, паролей, токенов, production-hostname и других идентификаторов инфраструктуры. Используются placeholders.
+
+## Возможности
+
+- входящий AmneziaWG-туннель на Server1;
+- опциональный дополнительный входящий WireGuard-интерфейс;
+- отдельный межсерверный WireGuard `wg-exit`;
+- BFD между Server1 и Server2;
+- BIRD 2.x для автоматического добавления/удаления default route;
+- Linux policy routing через table `200`;
+- автоматический fallback через WAN Server1;
+- автоматический failback через Server2;
+- event-driven очистка Linux conntrack через Netlink route events;
+- BFD между MikroTik и Server1 внутри AmneziaWG;
+- `check-gateway=bfd` на MikroTik;
+- очистка только соединений с `connection-mark=CM_VPN` при смене состояния маршрута;
+- сохранение работоспособности после перезагрузок Server1/Server2.
+
+## Как это работает
+
+### 1. MikroTik отправляет выбранный трафик в Server1
+
+На MikroTik нужные соединения маркируются `CM_VPN` и маршрутизируются через AmneziaWG до Server1.
+
+Внутри туннеля между MikroTik и Server1 может работать BFD. Для point-to-point адреса MikroTik с `/32` используется:
+
+```routeros
+/ip address
+add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF>
+```
+
+Это позволяет корректно использовать single-hop BFD и `check-gateway=bfd`.
+
+### 2. Server1 выбирает отдельную routing table
+
+Трафик, пришедший через `awg0`, направляется в table `200`:
+
+```bash
+ip rule add priority 1000 iif <AWG_IF> lookup 200
+```
+
+Для дополнительного входящего WireGuard можно использовать второе правило:
+
+```bash
+ip rule add priority 1001 iif <WG_IN_IF> lookup 200
+```
+
+### 3. Нормальный режим: выход через Server2
+
+Пока BFD-сессия Server1 ↔ Server2 находится в состоянии `Up`, BIRD экспортирует default route в Linux table `200`:
 
 ```text
-MikroTik -> AWG -> Server1 -> wg-exit -> Server2 -> Internet
+default via <WG_EXIT_S2_IP> dev wg-exit table 200 proto bird
 ```
 
-Fallback path:
+Путь:
 
 ```text
-MikroTik -> AWG -> Server1 -> eth0 -> Internet
+MikroTik
+  ↓
+AmneziaWG
+  ↓
+Server1
+  ↓
+table 200
+  ↓
+wg-exit
+  ↓
+Server2
+  ↓
+MASQUERADE
+  ↓
+Internet
 ```
 
-## Main components
+### 4. Отказ Server2 или wg-exit
 
-- MikroTik RouterOS 7
-- AmneziaWG tunnel to Server1 (`awg0` on Server1)
-- WireGuard tunnel between Server1 and Server2 (`wg-exit`)
-- BIRD 2.x with BFD
-- Linux policy routing, table `200`
-- Linux conntrack cleanup triggered by Netlink route events
-- MikroTik connection tracking cleanup for connections marked `CM_VPN`
+BFD обнаруживает потерю peer. Рекомендуемые стартовые параметры:
 
-## Documentation
+```text
+min TX/RX: 500 ms
+multiplier: 3
+```
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Deployment guide](docs/INSTALL.md)
-- [Operations and tests](docs/OPERATIONS.md)
-- [Security and publication checklist](docs/SECURITY.md)
-- [Placeholder reference](docs/VARIABLES.md)
+Практическое время обнаружения полного отказа — примерно 1.5 секунды.
 
-## Important design choices
+После перехода BFD в `Down` BIRD удаляет default route из table `200`:
 
-1. `wg-exit` on Server1 uses `Table = off`; it must not replace Server1's own default route.
-2. Traffic entering Server1 through `awg0` is selected by `ip rule ... iif awg0 lookup 200`.
-3. BIRD exports only the BFD-controlled default route into Linux table `200`.
-4. When table `200` has no default route, Linux continues to the next policy rule and uses `main`.
-5. Server1 performs NAT only on its own direct fallback path; Server2 performs NAT on the normal exit path.
-6. BFD is set to approximately `500 ms × 3`, which gives a practical failure detection time around 1.5 seconds without being excessively aggressive.
-7. Conntrack is cleared on both failover and failback.
+```text
+Deleted default via <WG_EXIT_S2_IP> dev wg-exit table 200 proto bird
+```
 
-## Repository safety
+В table `200` больше нет подходящего default route, поэтому Linux продолжает обработку следующих `ip rule` и использует `main`:
 
-Never commit:
+```text
+VPN client
+  ↓
+table 200: default отсутствует
+  ↓
+main
+  ↓
+Server1 WAN
+  ↓
+MASQUERADE
+  ↓
+Internet
+```
 
-- WireGuard or AmneziaWG private keys
-- real public IP addresses if the repository is intended to be public
-- passwords, API tokens or cloud credentials
-- raw production backups
-- files copied directly from `/etc/wireguard/` without sanitizing them
+### 5. Очистка conntrack на Server1
 
-See [SECURITY.md](docs/SECURITY.md) before publishing.
+Изменение маршрута само по себе не пересоздаёт старые NAT/conntrack states.
+
+Сервис `vpn-exit-monitor` слушает Netlink:
+
+```bash
+ip monitor route
+```
+
+и реагирует именно на добавление/удаление BIRD default route в table `200`.
+
+При failover и failback удаляются только conntrack entries VPN-сетей, например:
+
+```bash
+conntrack -D -s <AWG_NET>
+conntrack -D -s <WG_IN_NET>
+```
+
+Все остальные соединения Server1 остаются нетронутыми.
+
+### 6. Failback
+
+Когда Server2 возвращается:
+
+1. WireGuard снова передаёт трафик;
+2. BFD переходит в `Up`;
+3. BIRD возвращает default route в table `200`;
+4. `vpn-exit-monitor` очищает VPN conntrack;
+5. новые соединения сразу снова идут через Server2.
+
+### 7. MikroTik тоже очищает старые соединения
+
+MikroTik следит за BFD-маршрутом до Server1. Скрипт запоминает предыдущее состояние route и при переходах `UP ↔ DOWN` выполняет:
+
+```routeros
+/ip firewall connection remove [find where connection-mark="CM_VPN"]
+```
+
+Таким образом, при смене пути не приходится ждать таймаутов старых TCP/UDP/NAT states.
+
+## Почему BFD, а не ping/Netwatch
+
+BFD используется как основной liveness-механизм, потому что он:
+
+- работает с короткими интервалами;
+- не зависит от доступности стороннего Internet-host;
+- контролирует непосредственно нужный туннельный peer;
+- интегрирован с BIRD на Linux;
+- может использоваться MikroTik через `check-gateway=bfd`.
+
+Netwatch или отдельный ping-watchdog для этой схемы не требуется.
+
+## Структура репозитория
+
+```text
+.
+├── README.md
+├── README.en.md
+├── FULL_GUIDE.md
+├── LICENSE
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── INSTALL.md
+│   ├── OPERATIONS.md
+│   ├── SECURITY.md
+│   └── VARIABLES.md
+└── configs/
+    ├── mikrotik/
+    ├── server1/
+    └── server2/
+```
+
+## Документация
+
+- [Архитектура](docs/ARCHITECTURE.md)
+- [Установка и настройка](docs/INSTALL.md)
+- [Эксплуатация и тестирование](docs/OPERATIONS.md)
+- [Безопасность публикации](docs/SECURITY.md)
+- [Список placeholders](docs/VARIABLES.md)
+- [Краткий индекс полного руководства](FULL_GUIDE.md)
+- [English README](README.en.md)
+
+## Проверка отказоустойчивости
+
+На Server2:
+
+```bash
+systemctl stop wg-quick@wg-exit
+```
+
+Ожидается:
+
+```text
+BFD DOWN
+  ↓
+BIRD удаляет default из table 200
+  ↓
+vpn-exit-monitor очищает VPN conntrack
+  ↓
+новые соединения выходят через Server1
+```
+
+Возврат:
+
+```bash
+systemctl start wg-quick@wg-exit
+```
+
+Ожидается автоматический failback через Server2.
+
+## Синхронизация русской и английской документации
+
+`README.md` и `README.en.md` считаются двумя равноправными языковыми версиями основной документации.
+
+**При каждом изменении функционала обе версии должны обновляться в одном наборе изменений.**
+
+Новый функционал считается документированным только если:
+
+1. он описан в русском README;
+2. он описан в английском README;
+3. при необходимости обновлены соответствующие файлы в `docs/` и `configs/`.
+
+## Безопасность
+
+Никогда не коммитьте:
+
+- WireGuard/AmneziaWG private keys;
+- реальные production-пароли;
+- API tokens;
+- cloud credentials;
+- необезличенные backup/export файлы;
+- production-конфиги из `/etc/wireguard/` без проверки;
+- реальные публичные IP-адреса, если их публикация не планировалась.
+
+Перед публикацией смотрите [SECURITY.md](docs/SECURITY.md).
+
+## Лицензия
+
+Проект распространяется по свободной лицензии **MIT**. См. [LICENSE](LICENSE).
+
+MIT выбрана как простая permissive-лицензия, подходящая для документации, конфигурационных примеров и небольших вспомогательных скриптов: разрешено использовать, изменять, копировать и распространять материалы проекта при сохранении copyright/license notice.
