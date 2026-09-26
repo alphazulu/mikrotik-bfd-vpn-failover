@@ -262,6 +262,20 @@ function importConfig(role, text) {
     }
   }
 
+  if (role === "wgin") {
+    const address = firstIpv4Address(parsed.interface.Address);
+    const cidr = parseCidr(address);
+    if (cidr) {
+      $("wg-in-address").value = address;
+      $("wg-in-net").value = cidr.network;
+    }
+    if (parsed.interface.ListenPort) $("wg-in-port").value = parsed.interface.ListenPort;
+    if (parsed.interface.PrivateKey) $("wg-in-private").value = parsed.interface.PrivateKey;
+    if (peer.PublicKey) $("wg-in-peer-public").value = peer.PublicKey;
+    if (peer.PresharedKey) $("wg-in-psk").value = peer.PresharedKey;
+    if (peer.AllowedIPs) $("wg-in-peer-allowed").value = peer.AllowedIPs;
+  }
+
   setStatus(
     "status-" + role,
     "good",
