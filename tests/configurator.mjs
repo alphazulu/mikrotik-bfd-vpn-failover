@@ -133,7 +133,7 @@ const values = {
   "mt-route-table": "VPN",
   "mt-dst": "0.0.0.0/0",
   "connmark": "CM_VPN",
-  "mt-address-lists": "WHATSAPP-CIDR, telegram, vpn",
+  "mt-address-lists": "policy-list-a, policy-list-b, policy-list-c",
   "mt-wan-list": "WAN",
   "bfd-interval": "500",
   "bfd-multiplier": "3"
@@ -161,14 +161,14 @@ assert.match(files["server1/bird.conf"], /kernel table 200;/);
 assert.match(files["server1/bird.conf"], /neighbor 10.77.66.2 dev "wg-exit" local 10.77.66.1;/);
 assert.match(files["server1/bird.conf"], /route 0\.0\.0\.0\/0 via 10.77.66.2 bfd;/);
 assert.doesNotMatch(files["server1/bird.conf"], /route 0\.0\.0\.0\/0 via 10.77.66.2 dev /, "BIRD 2.14 static route must not use dev after an IPv4 nexthop");
-assert.match(files["server1/vpn-exit-monitor.sh"], /Deleted default via 10.77.66.2 dev wg-exit table 200 proto bird/);
-assert.match(files["server1/vpn-failover-firewall.service"], /-s 10.88.99.0\/24 -o eth0/);
-assert.match(files["server1/vpn-failover-firewall.service"], /-s 10.88.100.0\/24 -o eth0/);
-assert.match(files["server1/vpn-failover-firewall.service"], /-i awg0 -o awg0 .* -j DROP/);
-assert.match(files["server1/vpn-failover-firewall.service"], /-i awg0 .* -j ACCEPT/);
-assert.match(files["server1/vpn-failover-firewall.service"], /-o awg0 .*--ctstate RELATED,ESTABLISHED.* -j ACCEPT/);
-assert.match(files["server1/vpn-failover-firewall.service"], /-i wg-in -o wg-in .* -j DROP/);
-assert.match(files["server1/vpn-failover-firewall.service"], /-i wg-in .* -j ACCEPT/);
+assert.match(files["server1/policy-list-c-exit-monitor.sh"], /Deleted default via 10.77.66.2 dev wg-exit table 200 proto bird/);
+assert.match(files["server1/policy-list-c-failover-firewall.service"], /-s 10.88.99.0\/24 -o eth0/);
+assert.match(files["server1/policy-list-c-failover-firewall.service"], /-s 10.88.100.0\/24 -o eth0/);
+assert.match(files["server1/policy-list-c-failover-firewall.service"], /-i awg0 -o awg0 .* -j DROP/);
+assert.match(files["server1/policy-list-c-failover-firewall.service"], /-i awg0 .* -j ACCEPT/);
+assert.match(files["server1/policy-list-c-failover-firewall.service"], /-o awg0 .*--ctstate RELATED,ESTABLISHED.* -j ACCEPT/);
+assert.match(files["server1/policy-list-c-failover-firewall.service"], /-i wg-in -o wg-in .* -j DROP/);
+assert.match(files["server1/policy-list-c-failover-firewall.service"], /-i wg-in .* -j ACCEPT/);
 
 assert.match(files["server2/wg-exit.conf"], /AllowedIPs = 10.77.66.1\/32, 10.88.99.0\/24, 10.88.100.0\/24/);
 assert.match(files["server2/wg-exit.conf"], /-o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT/);
@@ -182,12 +182,12 @@ assert.match(files["mikrotik/bfd-failover.rsc"], /\/routing table/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /name="VPN"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /routing-table="VPN"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /connection-mark="CM_VPN"/);
-assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="WHATSAPP-CIDR"/);
-assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="telegram"/);
-assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="vpn"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="policy-list-a"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="policy-list-b"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="policy-list-c"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /new-routing-mark="VPN"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /in-interface-list=!WAN/);
-assert.match(files["INSTALL.txt"], /vpn-failover-firewall\.service/);
+assert.match(files["INSTALL.txt"], /policy-list-c-failover-firewall\.service/);
 assert.doesNotMatch(files["INSTALL.txt"], /^\s*iptables -t nat .*POSTROUTING -o eth0 -j MASQUERADE/m, "Install guide must not execute a duplicate broad NAT rule");
 
 const validS2 = element("s2-address").value;
@@ -214,6 +214,6 @@ fs.writeFileSync(path.join(out, "server1-bird.conf"), files["server1/bird.conf"]
 fs.writeFileSync(path.join(out, "server2-bird.conf"), files["server2/bird.conf"]);
 fs.writeFileSync(path.join(out, "server1-wg-exit.conf"), files["server1/wg-exit.conf"]);
 fs.writeFileSync(path.join(out, "server2-wg-exit.conf"), files["server2/wg-exit.conf"]);
-fs.writeFileSync(path.join(out, "vpn-exit-monitor.sh"), files["server1/vpn-exit-monitor.sh"]);
+fs.writeFileSync(path.join(out, "policy-list-c-exit-monitor.sh"), files["server1/policy-list-c-exit-monitor.sh"]);
 
 console.log("Configurator unit/security tests: OK");
