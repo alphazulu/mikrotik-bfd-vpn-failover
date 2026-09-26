@@ -2,10 +2,25 @@
 Address = <WG_EXIT_S2_IP>/<WG_EXIT_PREFIX>
 ListenPort = <WG_EXIT_PORT>
 PrivateKey = <SERVER2_WG_EXIT_PRIVATE_KEY>
+# Optional when a non-default MTU is required:
+# MTU = <WG_EXIT_MTU>
 
-PostUp = iptables -I FORWARD 1 -i %i -j ACCEPT
-PostDown = iptables -D FORWARD -i %i -j ACCEPT
+# Permit client traffic from wg-exit and established return traffic.
+PostUp = iptables -C FORWARD -i %i -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i %i -j ACCEPT
+PostUp = iptables -C FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+# Source-specific Internet NAT for the primary VPN client network.
+PostUp = iptables -t nat -C POSTROUTING -s <AWG_NET> -o <SERVER2_WAN_IF> -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s <AWG_NET> -o <SERVER2_WAN_IF> -m comment --comment wg-exit-failover -j MASQUERADE
+
+PostDown = iptables -D FORWARD -i %i -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+PostDown = iptables -t nat -D POSTROUTING -s <AWG_NET> -o <SERVER2_WAN_IF> -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || true
+
+# If <WG_IN_NET> is used, add equivalent POSTROUTING PostUp/PostDown rules for that subnet.
 
 [Peer]
 PublicKey = <SERVER1_WG_EXIT_PUBLIC_KEY>
-AllowedIPs = <WG_EXIT_S1_IP>/32, <AWG_NET>, <WG_IN_NET>
+# Optional, but must be identical on both peers:
+# PresharedKey = <WG_EXIT_PRESHARED_KEY>
+AllowedIPs = <WG_EXIT_S1_IP>/32, <AWG_NET>
+# If used, append: , <WG_IN_NET>
