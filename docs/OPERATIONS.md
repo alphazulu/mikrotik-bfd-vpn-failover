@@ -5,10 +5,13 @@
 ### Server1
 
 ```bash
-wg show wg-exit
+wg show
 birdc show bfd sessions
 ip rule
 ip route show table 200
+# for additional exits:
+ip route show table 201
+ip route show table 202
 systemctl is-active wg-quick@wg-exit bird vpn-exit-monitor
 ```
 
@@ -121,3 +124,34 @@ multiplier 3
 ```
 
 Do not make timers more aggressive unless measurements justify it.
+
+
+## Multi-exit failover test
+
+For multiple Server2 exits, verify the complete priority chain rather than only primary-to-main fallback.
+
+Example with three exits:
+
+```text
+table 200 -> priority 1
+table 201 -> priority 2
+table 202 -> priority 3
+main      -> Server1 WAN
+```
+
+Check the current state:
+
+```bash
+birdc show bfd sessions
+ip rule
+ip route show table 200
+ip route show table 201
+ip route show table 202
+journalctl -t vpn-exit-monitor -f
+```
+
+Then stop `wg-exit` on the most preferred Server2. New sessions should move to the next table. Continue until all Server2 exits are down and confirm fallback through Server1 WAN.
+
+Restore the Server2 nodes in a non-priority order as well. The selected path must always converge to the lowest numeric priority currently available.
+
+A backup Server2 going DOWN/UP while a higher-priority exit remains active should not produce a `Selected VPN exit changed` log entry and should not flush VPN conntrack.
