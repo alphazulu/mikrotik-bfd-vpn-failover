@@ -29,7 +29,7 @@ const defaults = {
   "mt-if": "wg-awg-proxy-1",
   "route-table": "200",
   "mt-policy-mode": "policy",
-  "mt-route-table": "main",
+  "mt-route-table": "VPN",
   "mt-dst": "0.0.0.0/0",
   "connmark": "CM_VPN",
   "mt-wan-list": "WAN",
@@ -700,6 +700,7 @@ function validate() {
     else add("good", "MikroTik dst-address корректен", "MikroTik dst-address is valid");
 
     if (!validNameToken(value("mt-route-table"))) add("bad", "Имя MikroTik routing table некорректно", "MikroTik routing table name is invalid");
+    else if (value("mt-route-table") === "main") add("bad", "В режиме address-list + mangle нужна отдельная routing table, например VPN. Используйте direct mode, если маршруты должны находиться в main.", "Address-list + mangle mode requires a dedicated routing table such as VPN. Use direct mode if routes should live in main.");
     if (!validNameToken(value("connmark"))) add("bad", "Connection mark некорректен", "Connection mark is invalid");
 
     const mtAddressLists = value("mt-address-lists").split(",").map((x) => x.trim()).filter(Boolean);
@@ -712,7 +713,6 @@ function validate() {
     }
 
     if (!validNameToken(value("mt-wan-list"))) add("bad", "MikroTik WAN interface-list некорректен", "MikroTik WAN interface-list is invalid");
-    if (mtAddressLists.length && value("mt-route-table") === "main") add("warn", "Для address-list policy routing обычно используется отдельная routing table, а не main", "Address-list policy routing normally uses a dedicated routing table rather than main");
   }
 
   if (mtPolicyMode === "direct") {
@@ -938,6 +938,10 @@ function generateFiles() {
       mikrotikPolicyBlock += `
 # Explicit fallback after the mangle lookup in the VPN table fails.
 # The default RouterOS policy order is mangle -> ... -> user -> main.
+# IMPORTANT when migrating an existing router: remove/disable any backup
+# default route already present inside this policy table. If such a route
+# remains active, the mangle lookup succeeds there and this fallback rule
+# will never be reached.
 # This user rule makes the fallback to main explicit without inventing
 # a second routing mark/table.
 :if ([:len [/routing rule find where comment="VPN_BFD_FALLBACK"]] = 0) do={
