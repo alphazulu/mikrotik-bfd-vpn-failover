@@ -84,7 +84,7 @@ const keyB = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
 const keyC = "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=";
 
 element("paste-s1").value = `[Interface]
-Address = fd00::1/64, 10.10.12.1/30
+Address = fd00::1/64, 10.77.66.1/30
 PrivateKey = ${keyA}
 MTU = 1380
 Table = off
@@ -98,7 +98,7 @@ PersistentKeepalive = 25
 `;
 
 element("paste-s2").value = `[Interface]
-Address = 10.10.12.2/30
+Address = 10.77.66.2/30
 ListenPort = 51830
 PrivateKey = ${keyB}
 MTU = 1380
@@ -106,16 +106,16 @@ MTU = 1380
 [Peer]
 PublicKey = ${keyA}
 PresharedKey = ${keyC}
-AllowedIPs = 10.10.12.1/32, 10.3.2.0/24, 10.3.3.0/24
+AllowedIPs = 10.77.66.1/32, 10.88.99.0/24, 10.88.100.0/24
 `;
 
 element("paste-in").value = `[Interface]
-Address = fd01::1/64, 10.3.2.1/24
+Address = fd01::1/64, 10.88.99.1/24
 PrivateKey = ${keyC}
 
 [Peer]
 PublicKey = DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=
-AllowedIPs = 10.3.2.4/32
+AllowedIPs = 10.88.99.4/32
 `;
 
 api.importConfig("s1", element("paste-s1").value);
@@ -123,7 +123,7 @@ api.importConfig("s2", element("paste-s2").value);
 api.importConfig("in", element("paste-in").value);
 
 const values = {
-  "wg-in-net": "10.3.3.0/24",
+  "wg-in-net": "10.88.100.0/24",
   "wg-in-if": "wg-in",
   "s1-wan": "eth0",
   "s2-wan": "eth0",
@@ -138,10 +138,10 @@ const values = {
 };
 for (const [id, value] of Object.entries(values)) element(id).value = value;
 
-assert.equal(element("s1-address").value, "10.10.12.1/30", "Must select IPv4 from mixed Address list");
-assert.equal(element("awg-server").value, "10.3.2.1", "Must infer incoming Server1 IPv4");
-assert.equal(element("awg-net").value, "10.3.2.0/24", "Must infer incoming client subnet");
-assert.equal(element("awg-mt").value, "10.3.2.4", "Must infer MikroTik /32 peer");
+assert.equal(element("s1-address").value, "10.77.66.1/30", "Must select IPv4 from mixed Address list");
+assert.equal(element("awg-server").value, "10.88.99.1", "Must infer incoming Server1 IPv4");
+assert.equal(element("awg-net").value, "10.88.99.0/24", "Must infer incoming client subnet");
+assert.equal(element("awg-mt").value, "10.88.99.4", "Must infer MikroTik /32 peer");
 assert.equal(element("s1-mtu").value, "1380");
 assert.equal(element("s2-mtu").value, "1380");
 assert.equal(element("s1-psk").value, keyC);
@@ -175,7 +175,7 @@ assert.match(files["INSTALL.txt"], /vpn-failover-firewall\.service/);
 assert.doesNotMatch(files["INSTALL.txt"], /^\s*iptables -t nat .*POSTROUTING -o eth0 -j MASQUERADE/m, "Install guide must not execute a duplicate broad NAT rule");
 
 const validS2 = element("s2-address").value;
-element("s2-address").value = "10.10.13.2/30";
+element("s2-address").value = "10.77.67.2/30";
 assert.equal(api.validate().ok, false, "Different wg-exit subnet must be rejected");
 element("s2-address").value = validS2;
 
