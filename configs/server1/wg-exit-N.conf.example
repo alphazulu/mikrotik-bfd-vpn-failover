@@ -1,0 +1,18 @@
+# Create one file like this for every Server2.
+# Use a unique Server1 interface name and a unique transfer subnet per exit.
+# Example filenames: wg-exit.conf, wg-exit2.conf, wg-exit3.conf.
+
+[Interface]
+Address = <WG_EXIT_S1_IP_N>/<WG_EXIT_PREFIX_N>
+PrivateKey = <SERVER1_WG_EXIT_PRIVATE_KEY_N>
+# Optional:
+# MTU = <WG_EXIT_MTU_N>
+Table = off
+
+[Peer]
+PublicKey = <SERVER2_WG_EXIT_PUBLIC_KEY_N>
+# Optional, identical on both peers:
+# PresharedKey = <WG_EXIT_PRESHARED_KEY_N>
+Endpoint = <SERVER2_N_PUBLIC_IP>:<WG_EXIT_PORT_N>
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
