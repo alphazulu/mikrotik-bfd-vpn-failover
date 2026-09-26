@@ -19,8 +19,14 @@ add chain=prerouting action=mark-routing new-routing-mark="<MT_ROUTE_TABLE>" pas
 
 # RouterOS v7 requires new-routing-mark to reference an existing routing table.
 # The mangle lookup tries <MT_ROUTE_TABLE> first. If its BFD route is inactive,
-# the lookup fails and processing continues to user rules. Make the fallback
-# to main explicit:
+# the lookup fails and processing continues to user rules.
+#
+# Migration note: remove/disable any old backup default route inside
+# <MT_ROUTE_TABLE> (for example a distance=2 route to the WAN gateway).
+# If it remains active, lookup succeeds inside <MT_ROUTE_TABLE> and the
+# fallback rule below is never reached.
+#
+# Make the fallback to main explicit:
 :if ([:len [/routing rule find where comment="VPN_BFD_FALLBACK"]] = 0) do={
     /routing rule add action=lookup routing-mark="<MT_ROUTE_TABLE>" table=main comment="VPN_BFD_FALLBACK"
 }
