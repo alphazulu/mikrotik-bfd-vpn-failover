@@ -1131,22 +1131,39 @@ protocol bfd bfd_exit {
 `;
   }
 
+  const wgInPriorityBase = exits.length === 1 ? 1001 : 2000;
+  let policyStart = "";
+  let policyStop = "";
+
+  exits.forEach((exit) => {
+    const awgPriority = 1000 + exit.rank;
+    policyStart += "ExecStart=/bin/sh -c '/usr/sbin/ip rule show | grep -Fq \"iif " + awgIf + " lookup " + exit.tableId +
+      "\" || /usr/sbin/ip rule add priority " + awgPriority + " iif " + awgIf + " lookup " + exit.tableId + "'\n";
+    policyStop = "ExecStop=/bin/sh -c '/usr/sbin/ip rule del priority " + awgPriority + " iif " + awgIf +
+      " lookup " + exit.tableId + " 2>/dev/null || true'\n" + policyStop;
+
+    if (wgInNet && !hasWgInConfig) {
+      const inPriority = wgInPriorityBase + exit.rank;
+      policyStart += "ExecStart=/bin/sh -c '/usr/sbin/ip rule show | grep -Fq \"iif " + wgInIf + " lookup " + exit.tableId +
+        "\" || /usr/sbin/ip rule add priority " + inPriority + " iif " + wgInIf + " lookup " + exit.tableId + "'\n";
+      policyStop = "ExecStop=/bin/sh -c '/usr/sbin/ip rule del priority " + inPriority + " iif " + wgInIf +
+        " lookup " + exit.tableId + " 2>/dev/null || true'\n" + policyStop;
+    }
+  });
+
   files["server1/awg-policy-routing.service"] =
 `[Unit]
-Description=Policy routing for VPN client traffic
+Description=Ordered policy routing for VPN client traffic
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c '/usr/sbin/ip rule show | grep -Fq "iif ${awgIf} lookup ${table}" || /usr/sbin/ip rule add priority 1000 iif ${awgIf} lookup ${table}'${policyExtraStart}
-ExecStop=/bin/sh -c '/usr/sbin/ip rule del priority 1000 iif ${awgIf} lookup ${table} 2>/dev/null || true'${policyExtraStop}
-
+${policyStart}${policyStop}
 [Install]
 WantedBy=multi-user.target
 `;
-
   files["server1/vpn-failover-firewall.service"] =
 `[Unit]
 Description=Persistent forwarding and fallback NAT for VPN client traffic
