@@ -11,18 +11,20 @@ add interfaces=<MT_AWG_IF> addresses=<AWG_SERVER_IP>/32 min-rx=500ms min-tx=500m
 :if ([:len [/routing table find where name="<MT_ROUTE_TABLE>"]] = 0) do={ /routing table add fib name="<MT_ROUTE_TABLE>" }
 
 /ip route
-add dst-address=0.0.0.0/0 gateway=<AWG_SERVER_IP>%<MT_AWG_IF> check-gateway=bfd distance=1 routing-table="<MT_ROUTE_TABLE>" comment="VPN_BFD_PRIMARY"
+add check-gateway=bfd comment="VPN_BFD_PRIMARY" disabled=no distance=1 dst-address=0.0.0.0/0 gateway=<AWG_SERVER_IP>%<MT_AWG_IF> routing-table=<MT_ROUTE_TABLE> scope=30 target-scope=10
 
 /ip firewall mangle
 add chain=prerouting action=mark-connection new-connection-mark="CM_VPN" passthrough=yes connection-state=new dst-address-type=!local dst-address-list="<DST_ADDRESS_LIST>" comment="VPN_POLICY_MARK"
-add chain=prerouting action=mark-routing new-routing-mark="<MT_ROUTE_TABLE>_RM" passthrough=yes connection-mark="CM_VPN" dst-address-type=!local in-interface-list=!<WAN_INTERFACE_LIST> comment="VPN_POLICY_ROUTE"
+add chain=prerouting action=mark-routing new-routing-mark="<MT_ROUTE_TABLE>" passthrough=yes connection-mark="CM_VPN" dst-address-type=!local in-interface-list=!<WAN_INTERFACE_LIST> comment="VPN_POLICY_ROUTE"
 
-# The routing-mark is intentionally not the table name. In RouterOS 7 a mark
-# equal to a table is resolved before user rules and does not fall through
-# when the only route in that table is inactive.
+# RouterOS v7 requires new-routing-mark to reference an existing routing table.
+# The mangle lookup tries <MT_ROUTE_TABLE> first. If its BFD route is inactive,
+# the lookup fails and processing continues to user rules. Make the fallback
+# to main explicit:
 /routing rule
-add action=lookup routing-mark="<MT_ROUTE_TABLE>_RM" table="<MT_ROUTE_TABLE>" comment="VPN_BFD_LOOKUP"
-add action=lookup routing-mark="<MT_ROUTE_TABLE>_RM" table=main comment="VPN_BFD_FALLBACK"
+:if ([:len [find where comment="VPN_BFD_FALLBACK"]] = 0) do={
+    add action=lookup routing-mark="<MT_ROUTE_TABLE>" table=main comment="VPN_BFD_FALLBACK"
+}
 
 # Fasttrack skips mangle. Limit catch-all fasttrack rules to unmarked connections.
 :foreach ftId in=[/ip firewall filter find where chain=forward action=fasttrack-connection] do={
