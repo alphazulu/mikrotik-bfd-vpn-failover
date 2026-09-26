@@ -21,6 +21,12 @@ Use placeholders in documentation and public repositories. Suggested mapping:
 | `<WG_EXIT_PRESHARED_KEY>` | Optional WireGuard PresharedKey; sensitive and identical on both peers |
 | `<WG_IN_NET>` | Optional second incoming WireGuard client network on Server1 |
 | `<WG_IN_IF>` | Optional incoming WireGuard interface on Server1 |
+| `<WG_IN_SERVER_ADDRESS>` | Optional Server1 address/prefix on `wg-in` |
+| `<WG_IN_PORT>` | Optional UDP listen port for `wg-in` |
+| `<WG_IN_PRIVATE_KEY>` | Optional Server1 `wg-in` private key — never commit a real value |
+| `<WG_IN_PEER_PUBLIC_KEY>` | Optional `wg-in` peer public key |
+| `<WG_IN_PEER_ALLOWED_IPS>` | Optional `AllowedIPs` for the `wg-in` peer |
+| `<WG_IN_PRESHARED_KEY>` | Optional `wg-in` PresharedKey |
 | `<SERVER1_WG_EXIT_PRIVATE_KEY>` | Server1 private key — never commit a real value |
 | `<SERVER1_WG_EXIT_PUBLIC_KEY>` | Server1 public key |
 | `<SERVER2_WG_EXIT_PRIVATE_KEY>` | Server2 private key — never commit a real value |
