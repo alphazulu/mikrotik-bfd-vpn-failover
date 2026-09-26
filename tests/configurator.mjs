@@ -171,7 +171,8 @@ assert.match(files["server1/vpn-failover-firewall.service"], /-i wg-in -o wg-in 
 assert.match(files["server1/vpn-failover-firewall.service"], /-i wg-in .* -j ACCEPT/);
 
 assert.match(files["server2/wg-exit.conf"], /AllowedIPs = 10.77.66.1\/32, 10.88.99.0\/24, 10.88.100.0\/24/);
-assert.match(files["server2/wg-exit.conf"], /-o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT/);
+assert.match(files["server2/wg-exit.conf"], /-o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT/);
+assert.match(files["server2/wg-exit.conf"], /-i %i -m comment --comment wg-exit-failover -j ACCEPT/);
 assert.match(files["server2/wg-exit.conf"], /-s 10.88.99.0\/24 -o eth0/);
 assert.match(files["server2/wg-exit.conf"], /-s 10.88.100.0\/24 -o eth0/);
 
