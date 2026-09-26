@@ -1,0 +1,38 @@
+# RouterOS 7 sanitized example.
+# Review object names and route selection logic before importing.
+
+/ip address
+add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF> comment="AWG tunnel P2P address"
+
+/routing bfd configuration
+add interfaces=<MT_AWG_IF> addresses=<AWG_SERVER_IP>/32 min-rx=500ms min-tx=500ms multiplier=3
+
+/ip route
+add dst-address=0.0.0.0/0 gateway=<AWG_SERVER_IP>%<MT_AWG_IF> check-gateway=bfd distance=1 comment="VPN_BFD_PRIMARY"
+
+/system script
+add name=VPN-BFD-Conntrack policy=read,write,test source={
+    :global vpnBfdLastState
+    :local routeId [/ip route find where comment="VPN_BFD_PRIMARY"]
+    :if ([:len $routeId] = 0) do={
+        :log warning "VPN-BFD: monitored route not found"
+        :return
+    }
+    :local routeActive [/ip route get $routeId active]
+    :local currentState "DOWN"
+    :if ($routeActive = true) do={ :set currentState "UP" }
+    :if ([:typeof $vpnBfdLastState] = "nothing") do={
+        :set vpnBfdLastState $currentState
+        :log info ("VPN-BFD: initial state = " . $currentState)
+        :return
+    }
+    :if ($currentState != $vpnBfdLastState) do={
+        :local connCount [:len [/ip firewall connection find where connection-mark="CM_VPN"]]
+        :log warning ("VPN-BFD: state changed " . $vpnBfdLastState . " -> " . $currentState . ", removing " . $connCount . " CM_VPN connections")
+        /ip firewall connection remove [find where connection-mark="CM_VPN"]
+        :set vpnBfdLastState $currentState
+    }
+}
+
+/system scheduler
+add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack start-time=startup
