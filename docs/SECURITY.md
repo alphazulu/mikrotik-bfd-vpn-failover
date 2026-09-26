@@ -41,3 +41,20 @@ grep -Rni '<PRODUCTION_IP_2>' .
 ## Git history matters
 
 Deleting a secret from the current version does not remove it from previous Git commits. If a secret was ever committed, rotate the secret and rewrite history before making the repository public.
+
+
+## Browser configurator
+
+The static configurator under `configurator/` is designed so imported production configuration never needs to leave the user's browser.
+
+Security properties:
+
+- no backend and no analytics;
+- no external runtime JavaScript, CSS, fonts or CDN dependencies;
+- Content Security Policy uses `connect-src 'none'`;
+- no cookies, localStorage, sessionStorage, IndexedDB or Service Worker;
+- imported files are read with the browser File API only;
+- generated downloads are created with `Blob` / object URLs locally;
+- private keys are masked in preview unless the user explicitly reveals them.
+
+The downloaded generated bundle can contain real private keys and must be treated as sensitive material.
