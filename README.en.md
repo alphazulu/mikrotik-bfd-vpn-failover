@@ -56,9 +56,18 @@ It can:
 - generate an optional `server1/wg-in.conf` with its own `PostUp`/`PreDown` policy-routing and FORWARD lifecycle hooks;
 - generate BIRD/BFD, Linux policy routing, systemd units, persistent Server1 FORWARD/fallback NAT and event-driven conntrack cleanup;
 - generate MikroTik `check-gateway=bfd` and selective `CM_VPN` cleanup;
-- optionally create a dedicated RouterOS routing table and mangle policy routing for one or more `dst-address-list` values;
+- choose between a dedicated RouterOS table with `dst-address-list`/mangle policy routing or direct static routes in `main` without marking;
 - download individual files or the complete generated set as a `.tar`;
 - keep source-specific Server2 NAT/forwarding in `wg-exit.conf` and Server1 fallback NAT in a dedicated systemd unit.
+
+### MikroTik routing modes
+
+The configurator supports two modes:
+
+1. **Address-list + mangle.** It creates `mark-connection` and `mark-routing` rules for selected `dst-address-list` values, a dedicated routing table, and a BFD-monitored route. Selective conntrack cleanup by `connection-mark` remains available.
+2. **Direct routes.** The user supplies IPv4/CIDR destinations and the configurator creates ordinary static routes in `main` through the AWG gateway with `check-gateway=bfd`. No mangle or connection marks are generated. When BFD goes DOWN the routes become inactive and RouterOS uses other matching routes, normally the regular default route.
+
+Selective MikroTik conntrack cleanup is intentionally omitted in direct-route mode because there is no connection mark.
 
 ### Automated checks
 
