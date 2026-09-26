@@ -156,17 +156,21 @@ Two MikroTik routing models are supported.
 
 The failover route lives in a dedicated RouterOS routing table. The configurator ensures that the table exists, creates a BFD-monitored route inside it, and generates `mark-connection` rules for the selected destination address lists.
 
-Mangle does **not** set `new-routing-mark` to the table name. In RouterOS 7 that mark is resolved before user routing rules, and an inactive route in that table does not fall back to `main` (RouterOS 6 did). Marked packets would be blackholed exactly when the MikroTik↔Server1 BFD session fails.
+RouterOS v7 requires `new-routing-mark` to reference an existing routing table, so mangle uses the actual table name (for example `VPN`):
 
-Instead, mangle sets a distinct routing mark (`<table>_RM`). Two routing rules then implement active-backup:
+```routeros
+/ip firewall mangle
+add action=mark-routing chain=prerouting connection-mark=CM_VPN new-routing-mark=VPN
+```
+
+With the default RouterOS policy order, the mangle lookup is evaluated before user routing rules. If the BFD route in `VPN` is inactive and no route matches, that lookup fails and RouterOS continues to the next policy rule. The configurator adds one explicit user rule to make the fallback to `main` obvious:
 
 ```routeros
 /routing rule
-add action=lookup routing-mark="<table>_RM" table=<table>
-add action=lookup routing-mark="<table>_RM" table=main
+add action=lookup routing-mark=VPN table=main comment="VPN_BFD_FALLBACK"
 ```
 
-`action=lookup` uses the named table and, if no active route matches, continues to the next rule. While BFD is up, the first rule selects the VPN default. When that route is inactive, the second rule uses `main` and therefore the normal WAN default. Both rules match only the policy routing mark, so unmarked traffic is unchanged.
+No synthetic `VPN_RM` table/mark is needed.
 
 Packets to the router itself are excluded with `dst-address-type=!local`, and traffic arriving on the WAN interface list is not marked.
 
