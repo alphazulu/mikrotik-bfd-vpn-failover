@@ -1436,7 +1436,7 @@ SERVER1
    sysctl -w net.ipv4.conf.default.rp_filter=2
 
 4. Установить:
-   server1/wg-exit.conf                 -> /etc/wireguard/wg-exit.conf${wgInInstallRu}
+${server1ExitInstallRu}${wgInInstallRu}
    server1/bird.conf                    -> /etc/bird/bird.conf
    server1/awg-policy-routing.service   -> /etc/systemd/system/awg-policy-routing.service
    server1/vpn-failover-firewall.service -> /etc/systemd/system/vpn-failover-firewall.service
@@ -1444,12 +1444,12 @@ SERVER1
    server1/vpn-exit-monitor.service     -> /etc/systemd/system/vpn-exit-monitor.service
 
 5. Права:
-   chmod 600 /etc/wireguard/wg-exit.conf${hasWgInConfig ? "\n   chmod 600 /etc/wireguard/" + wgInIf + ".conf" : ""}
+${server1ExitChmodRu}${hasWgInConfig ? "\n   chmod 600 /etc/wireguard/" + wgInIf + ".conf" : ""}
    chmod 755 /usr/local/sbin/vpn-exit-monitor.sh
 
 6. Запустить:
    systemctl daemon-reload
-   systemctl enable --now wg-quick@wg-exit${wgInStartRu}
+${server1ExitStartRu}${wgInStartRu}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
    systemctl enable bird
@@ -1461,7 +1461,7 @@ SERVER1
 Server1:
    birdc show bfd sessions
    ip rule
-   ip route show table ${table}
+${exitTableCheckRu}
    journalctl -t vpn-exit-monitor -f
 
 Server2:
@@ -1469,8 +1469,9 @@ Server2:
    wg show wg-exit
 
 Failover test:
-   systemctl stop wg-quick@wg-exit    # на Server2
-   systemctl start wg-quick@wg-exit   # вернуть обратно
+   Остановите wg-exit на текущем Server2 с наивысшим приоритетом.
+   Server1 должен выбрать следующий доступный table по порядку выше.
+   После возврата более приоритетного Server2 трафик должен вернуться на него.
 
 MIKROTIK
 --------
@@ -1504,11 +1505,17 @@ SERVER1
    sysctl -w net.ipv4.conf.all.rp_filter=2
    sysctl -w net.ipv4.conf.default.rp_filter=2
 
-4. Install the generated Server1 files to their matching /etc and /usr/local paths.${wgInInstallEn}
+4. Install:
+${server1ExitInstallEn}${wgInInstallEn}
+   server1/bird.conf -> /etc/bird/bird.conf
+   server1/awg-policy-routing.service -> /etc/systemd/system/awg-policy-routing.service
+   server1/vpn-failover-firewall.service -> /etc/systemd/system/vpn-failover-firewall.service
+   server1/vpn-exit-monitor.sh -> /usr/local/sbin/vpn-exit-monitor.sh
+   server1/vpn-exit-monitor.service -> /etc/systemd/system/vpn-exit-monitor.service
 
 5. Start:
    systemctl daemon-reload
-   systemctl enable --now wg-quick@wg-exit${wgInStartEn}
+${server1ExitStartRu}${wgInStartEn}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
    systemctl enable bird
@@ -1522,9 +1529,10 @@ CHECK
    ip route show table ${table}
    journalctl -t vpn-exit-monitor -f
 
-Failover on Server2:
-   systemctl stop wg-quick@wg-exit
-   systemctl start wg-quick@wg-exit
+Failover test:
+   Stop wg-exit on the currently preferred Server2.
+   Server1 should select the next available routing table by priority.
+   When the higher-priority Server2 returns, traffic should move back to it.
 
 MIKROTIK
 --------
