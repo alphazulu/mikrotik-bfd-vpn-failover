@@ -177,6 +177,8 @@ assert.match(files["server2/wg-exit.conf"], /-s 10.88.100.0\/24 -o eth0/);
 
 assert.match(files["mikrotik/bfd-failover.rsc"], /address=10.88.99.4\/32 network=10.88.99.1/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /check-gateway=bfd/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /\/routing table/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /name="VPN"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /routing-table="VPN"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /connection-mark="CM_VPN"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="WHATSAPP-CIDR"/);
