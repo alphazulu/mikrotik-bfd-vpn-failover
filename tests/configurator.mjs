@@ -162,6 +162,11 @@ assert.doesNotMatch(files["server1/bird.conf"], /route 0\.0\.0\.0\/0 via 10.77.6
 assert.match(files["server1/vpn-exit-monitor.sh"], /Deleted default via 10.77.66.2 dev wg-exit table 200 proto bird/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-s 10.88.99.0\/24 -o eth0/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-s 10.88.100.0\/24 -o eth0/);
+assert.match(files["server1/vpn-failover-firewall.service"], /-i awg0 -o awg0 .* -j DROP/);
+assert.match(files["server1/vpn-failover-firewall.service"], /-i awg0 .* -j ACCEPT/);
+assert.match(files["server1/vpn-failover-firewall.service"], /-o awg0 .*--ctstate RELATED,ESTABLISHED.* -j ACCEPT/);
+assert.match(files["server1/vpn-failover-firewall.service"], /-i wg-in -o wg-in .* -j DROP/);
+assert.match(files["server1/vpn-failover-firewall.service"], /-i wg-in .* -j ACCEPT/);
 
 assert.match(files["server2/wg-exit.conf"], /AllowedIPs = 10.77.66.1\/32, 10.88.99.0\/24, 10.88.100.0\/24/);
 assert.match(files["server2/wg-exit.conf"], /-o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT/);
