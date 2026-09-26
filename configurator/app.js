@@ -488,9 +488,15 @@ function generateFiles() {
 
   const fallbackNatExtraStart = wgInNet
     ? "\nExecStart=/bin/sh -c '/usr/sbin/iptables -t nat -C POSTROUTING -s " + wgInNet + " -o " + s1Wan + " -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || /usr/sbin/iptables -t nat -A POSTROUTING -s " + wgInNet + " -o " + s1Wan + " -m comment --comment vpn-failover-fallback -j MASQUERADE'"
+      + "\nExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i " + wgInIf + " -o " + wgInIf + " -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || /usr/sbin/iptables -I FORWARD 1 -i " + wgInIf + " -o " + wgInIf + " -m comment --comment vpn-failover-forward -j DROP'"
+      + "\nExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i " + wgInIf + " -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 2 -i " + wgInIf + " -m comment --comment vpn-failover-forward -j ACCEPT'"
+      + "\nExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -o " + wgInIf + " -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 3 -o " + wgInIf + " -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT'"
     : "";
   const fallbackNatExtraStop = wgInNet
     ? "\nExecStop=/bin/sh -c '/usr/sbin/iptables -t nat -D POSTROUTING -s " + wgInNet + " -o " + s1Wan + " -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || true'"
+      + "\nExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -o " + wgInIf + " -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'"
+      + "\nExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i " + wgInIf + " -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'"
+      + "\nExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i " + wgInIf + " -o " + wgInIf + " -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || true'"
     : "";
 
   const routingTableClause = mtTable && mtTable !== "main" ? " routing-table=" + qRouter(mtTable) : "";
@@ -607,15 +613,21 @@ WantedBy=multi-user.target
 
   files["server1/vpn-failover-firewall.service"] =
 `[Unit]
-Description=Persistent fallback NAT for VPN client traffic
+Description=Persistent forwarding and fallback NAT for VPN client traffic
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i ${awgIf} -o ${awgIf} -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || /usr/sbin/iptables -I FORWARD 1 -i ${awgIf} -o ${awgIf} -m comment --comment vpn-failover-forward -j DROP'
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i ${awgIf} -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 2 -i ${awgIf} -m comment --comment vpn-failover-forward -j ACCEPT'
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -o ${awgIf} -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 3 -o ${awgIf} -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT'
 ExecStart=/bin/sh -c '/usr/sbin/iptables -t nat -C POSTROUTING -s ${awgNet} -o ${s1Wan} -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || /usr/sbin/iptables -t nat -A POSTROUTING -s ${awgNet} -o ${s1Wan} -m comment --comment vpn-failover-fallback -j MASQUERADE'${fallbackNatExtraStart}
 ExecStop=/bin/sh -c '/usr/sbin/iptables -t nat -D POSTROUTING -s ${awgNet} -o ${s1Wan} -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || true'${fallbackNatExtraStop}
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -o ${awgIf} -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i ${awgIf} -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i ${awgIf} -o ${awgIf} -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || true'
 
 [Install]
 WantedBy=multi-user.target
