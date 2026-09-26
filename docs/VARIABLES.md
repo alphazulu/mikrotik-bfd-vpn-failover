@@ -7,6 +7,7 @@ Use placeholders in documentation and public repositories. Suggested mapping:
 | `<SERVER1_PUBLIC_IP>` | Public IPv4 of Server1 |
 | `<SERVER2_PUBLIC_IP>` | Public IPv4 of Server2 |
 | `<SERVER1_WAN_IF>` | Server1 Internet-facing interface, e.g. `eth0` |
+| `<LINUX_POLICY_TABLE>` | Linux policy-routing table used for VPN client traffic, normally `200` |
 | `<SERVER2_WAN_IF>` | Server2 Internet-facing interface, e.g. `eth0` |
 | `<AWG_IF>` | AmneziaWG interface on Server1, normally `awg0` |
 | `<AWG_NET>` | Client network behind `awg0` |
