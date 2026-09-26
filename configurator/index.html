@@ -52,11 +52,19 @@
         </div>
 
         <div class="import-box">
-          <h3 data-ru="Входящий AWG/WG на Server1 — опционально" data-en="Incoming AWG/WG on Server1 — optional">Входящий AWG/WG на Server1 — опционально</h3>
+          <h3 data-ru="Server1 — входящий AmneziaWG, опционально" data-en="Server1 — incoming AmneziaWG, optional">Server1 — входящий AmneziaWG, опционально</h3>
           <input id="file-in" type="file" accept=".conf,.txt">
-          <textarea id="paste-in" rows="8" spellcheck="false" data-placeholder-ru="можно импортировать адрес Server1 и peer /32" data-placeholder-en="can infer Server1 address and a peer /32" placeholder="можно импортировать адрес Server1 и peer /32"></textarea>
-          <button id="parse-in" type="button" data-ru="Разобрать входящий VPN" data-en="Parse incoming VPN">Разобрать входящий VPN</button>
+          <textarea id="paste-in" rows="8" spellcheck="false" data-placeholder-ru="импорт для определения AWG-адреса Server1 и MikroTik peer /32" data-placeholder-en="import to infer Server1 AWG address and MikroTik peer /32" placeholder="импорт для определения AWG-адреса Server1 и MikroTik peer /32"></textarea>
+          <button id="parse-in" type="button" data-ru="Разобрать AWG" data-en="Parse AWG">Разобрать AWG</button>
           <div id="status-in" class="status neutral">—</div>
+        </div>
+
+        <div class="import-box">
+          <h3 data-ru="Server1 — дополнительный wg-in, опционально" data-en="Server1 — additional wg-in, optional">Server1 — дополнительный wg-in, опционально</h3>
+          <input id="file-wgin" type="file" accept=".conf,.txt">
+          <textarea id="paste-wgin" rows="8" spellcheck="false" data-placeholder-ru="импорт /etc/wireguard/wg-in.conf" data-placeholder-en="import /etc/wireguard/wg-in.conf" placeholder="импорт /etc/wireguard/wg-in.conf"></textarea>
+          <button id="parse-wgin" type="button" data-ru="Разобрать wg-in" data-en="Parse wg-in">Разобрать wg-in</button>
+          <div id="status-wgin" class="status neutral">—</div>
         </div>
       </div>
     </section>
@@ -85,6 +93,9 @@
           <label>Server2 PublicKey<input id="s2-public" type="password" autocomplete="off"></label>
           <label>Server1 Peer PresharedKey <span class="optional">(optional)</span><input id="s1-psk" type="password" autocomplete="off"></label>
           <label>Server2 Peer PresharedKey <span class="optional">(optional)</span><input id="s2-psk" type="password" autocomplete="off"></label>
+          <label>wg-in Server1 PrivateKey <span class="optional">(optional)</span><input id="wg-in-private" type="password" autocomplete="off"></label>
+          <label>wg-in Peer PublicKey <span class="optional">(optional)</span><input id="wg-in-peer-public" type="password" autocomplete="off"></label>
+          <label>wg-in PresharedKey <span class="optional">(optional)</span><input id="wg-in-psk" type="password" autocomplete="off"></label>
         </div>
         <label class="check"><input id="show-secrets" type="checkbox"><span data-ru="Показывать ключи в полях и предпросмотре" data-en="Show keys in fields and previews">Показывать ключи в полях и предпросмотре</span></label>
       </details>
@@ -96,6 +107,9 @@
         <label data-ru="VPN client subnet" data-en="VPN client subnet">VPN client subnet<input id="awg-net" type="text" placeholder="10.1.0.0/24"></label>
         <label data-ru="Дополнительный WG client subnet" data-en="Additional WG client subnet">Дополнительный WG client subnet<input id="wg-in-net" type="text" placeholder="optional"></label>
         <label data-ru="Дополнительный WG interface" data-en="Additional WG interface">Дополнительный WG interface<input id="wg-in-if" type="text" value="wg-in"></label>
+        <label>wg-in Server1 Address <span class="optional">(optional)</span><input id="wg-in-address" type="text" placeholder="10.2.0.1/24"></label>
+        <label>wg-in ListenPort <span class="optional">(optional)</span><input id="wg-in-port" type="number" min="1" max="65535" placeholder="51831"></label>
+        <label>wg-in Peer AllowedIPs <span class="optional">(optional)</span><input id="wg-in-peer-allowed" type="text" placeholder="10.2.0.2/32"></label>
         <label>Server1 AWG interface<input id="awg-if" type="text" value="awg0"></label>
         <label>MikroTik interface<input id="mt-if" type="text" value="wg-awg-proxy-1"></label>
       </div>
@@ -140,7 +154,7 @@
     <section class="card">
       <h2 data-ru="Что именно генерируется" data-en="What is generated">Что именно генерируется</h2>
       <ul>
-        <li>Server1: <code>wg-exit.conf</code>, <code>bird.conf</code>, policy-routing systemd unit, persistent fallback NAT service, conntrack monitor и service.</li>
+        <li>Server1: <code>wg-exit.conf</code>, optional <code>wg-in.conf</code>, <code>bird.conf</code>, policy-routing systemd unit, persistent fallback NAT service, conntrack monitor и service.</li>
         <li>Server2: <code>wg-exit.conf</code>, <code>bird.conf</code>.</li>
         <li>MikroTik: BFD + <code>check-gateway=bfd</code> + stateful cleanup <code>CM_VPN</code>.</li>
         <li><code>INSTALL.txt</code> с командами установки, NAT и проверками.</li>
