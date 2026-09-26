@@ -33,6 +33,9 @@ Important points:
 - Server2 listens on `<WG_EXIT_PORT>/udp`.
 - `AllowedIPs` for the Server1 peer includes the Server1 tunnel address plus all VPN client networks routed through Server1.
 - `PostUp`/`PostDown` persist the required `FORWARD` permission for `wg-exit`.
+- The reference config also permits established return traffic to `wg-exit`.
+- Source-specific `MASQUERADE` rules for VPN client networks are installed and removed with `wg-exit`.
+- Optional `MTU` and `PresharedKey` values may be used; a PresharedKey must be identical on both peers.
 
 Enable and verify:
 
@@ -43,15 +46,11 @@ ip -br addr show wg-exit
 ip route
 ```
 
-## 3. Server2 — NAT
+## 3. Server2 — NAT and forwarding
 
-Server2 needs a WAN masquerade rule. If the host already has a broad working rule such as:
+The supplied `wg-exit.conf.example` is self-contained for the normal exit path: it adds forwarding rules plus source-specific `MASQUERADE` for `<AWG_NET>`. If `<WG_IN_NET>` is also used, add the matching optional NAT lines shown in the comments or use the browser configurator, which generates them automatically.
 
-```bash
-iptables -t nat -A POSTROUTING -o <SERVER2_WAN_IF> -j MASQUERADE
-```
-
-no additional NAT rule is required for the VPN client subnets.
+This approach avoids adding a second broad `POSTROUTING -o <SERVER2_WAN_IF> -j MASQUERADE` rule when the host already carries unrelated traffic.
 
 ## 4. Server2 — BIRD BFD responder
 
@@ -106,6 +105,8 @@ Critical setting:
 Table = off
 ```
 
+If the imported/current WireGuard pair uses a `PresharedKey`, preserve it on both peers. If either side uses a custom `MTU`, preserve that value as well.
+
 Enable:
 
 ```bash
@@ -126,7 +127,24 @@ ip rule add priority 1001 iif <WG_IN_IF> lookup 200
 
 Persist the rules using the supplied systemd example or another local network configuration mechanism.
 
-## 8. Server1 — BIRD
+## 8. Server1 — persistent fallback NAT
+
+Install `configs/server1/vpn-failover-firewall.service.example` as:
+
+```text
+/etc/systemd/system/vpn-failover-firewall.service
+```
+
+Replace placeholders and enable it:
+
+```bash
+systemctl daemon-reload
+systemctl enable --now vpn-failover-firewall.service
+```
+
+The unit manages only source-specific fallback `MASQUERADE` rules for VPN client networks.
+
+## 9. Server1 — BIRD
 
 Create `/etc/bird/bird.conf` from `configs/server1/bird.conf.example`.
 
@@ -148,7 +166,7 @@ ip route show table 200
 
 With BFD UP, table `200` should contain a default via `wg-exit`.
 
-## 9. Server1 — conntrack event monitor
+## 10. Server1 — conntrack event monitor
 
 Install `configs/server1/vpn-exit-monitor.sh` as `/usr/local/sbin/vpn-exit-monitor.sh` and `configs/server1/vpn-exit-monitor.service` under `/etc/systemd/system/`.
 
@@ -163,7 +181,7 @@ journalctl -t vpn-exit-monitor -f
 
 The service listens to Netlink route events using `ip monitor route` and flushes VPN conntrack only on add/delete events for the BIRD default route in table `200`.
 
-## 10. MikroTik — BFD to Server1
+## 11. MikroTik — BFD to Server1
 
 Use the sanitized example in `configs/mikrotik/bfd-failover.rsc.example`.
 
@@ -176,7 +194,7 @@ add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF>
 
 Then enable BFD and use `check-gateway=bfd` on the monitored route.
 
-## 11. Functional test
+## 12. Functional test
 
 Normal state:
 
