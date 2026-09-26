@@ -24,6 +24,7 @@ const defaults = {
   "wg-in-if": "wg-in",
   "mt-if": "wg-awg-proxy-1",
   "route-table": "200",
+  "mt-policy-mode": "policy",
   "mt-route-table": "main",
   "mt-dst": "0.0.0.0/0",
   "connmark": "CM_VPN",
@@ -205,6 +206,37 @@ function safeToken(value) {
 
 function validWgKey(value) {
   return /^[A-Za-z0-9+/]{43}=$/.test(String(value || "").trim());
+}
+
+function parseDirectRouteDestinations(raw) {
+  const tokens = String(raw || "").split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+  const values = [];
+  const invalid = [];
+
+  for (const token of tokens) {
+    let normalized = "";
+    if (isIpv4(token)) {
+      normalized = token + "/32";
+    } else {
+      const parsed = parseCidr(token);
+      if (parsed) normalized = parsed.network;
+    }
+
+    if (!normalized) {
+      invalid.push(token);
+      continue;
+    }
+
+    if (!values.includes(normalized)) values.push(normalized);
+  }
+
+  return { values, invalid };
+}
+
+function updateMikrotikMode() {
+  const mode = $("mt-policy-mode").value || "policy";
+  $("mt-policy-fields").classList.toggle("hidden", mode !== "policy");
+  $("mt-direct-fields").classList.toggle("hidden", mode !== "direct");
 }
 
 function setStatus(id, kind, text) {
