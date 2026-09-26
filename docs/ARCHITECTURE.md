@@ -124,12 +124,22 @@ Handled on MikroTik by its own BFD session and `check-gateway=bfd` route monitor
 The two mechanisms are independent.
 
 
-## 7. MikroTik policy routing
+## 7. MikroTik routing modes
 
-The failover route may live in a dedicated RouterOS routing table rather than `main`.
+Two MikroTik routing models are supported.
 
-When a custom table is selected, the configurator first ensures that the table exists under `/routing table`, then creates the BFD-monitored default route inside it.
+### Address-list + mangle mode
 
-Optionally, one or more existing destination address lists can be supplied. For each list the configurator generates a `mark-connection` rule that assigns the configured connection mark (for example `CM_VPN`). A single `mark-routing` rule then sends those marked connections into the selected routing table while excluding traffic arriving from the configured WAN interface list.
+The failover route lives in a dedicated RouterOS routing table. The configurator ensures that the table exists, creates a BFD-monitored route inside it, generates `mark-connection` rules for the selected destination address lists, and uses a single `mark-routing` rule to send marked connections into that table while excluding the configured WAN interface list.
 
-The address-list contents themselves are not generated, because they are deployment-specific policy data rather than part of the failover transport topology.
+The address-list contents themselves are not generated because they are deployment-specific policy data.
+
+Because connections are marked, the MikroTik failover script can selectively remove only those connections on route state changes.
+
+### Direct-route mode
+
+No policy-routing marks are used. The configurator accepts one or more IPv4/CIDR destinations and creates static routes directly in `main` through the Server1 AWG gateway with `check-gateway=bfd`.
+
+When the BFD session is DOWN, those specific routes become inactive and normal RouterOS longest-prefix routing falls back to other matching routes, usually the regular Internet default route.
+
+This mode intentionally does not generate mangle rules, connection marks, or selective MikroTik conntrack cleanup. It is simpler and works well when the set of destinations can be expressed directly as routes.
