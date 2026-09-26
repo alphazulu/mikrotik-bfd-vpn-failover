@@ -142,7 +142,7 @@ systemctl daemon-reload
 systemctl enable --now vpn-failover-firewall.service
 ```
 
-The unit manages only source-specific fallback `MASQUERADE` rules for VPN client networks.
+The unit manages source-specific fallback `MASQUERADE` rules plus explicit Server1 `FORWARD` rules for the incoming VPN interfaces. Generated rules carry project-specific comments so the service removes only its own entries.
 
 ## 9. Server1 — BIRD
 
