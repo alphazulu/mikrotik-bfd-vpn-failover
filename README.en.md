@@ -2,7 +2,7 @@
 
 [Русская версия](README.md)
 
-This repository documents a resilient two-stage VPN routing design:
+This repository documents a resilient multi-stage VPN routing design. The basic topology uses one Server2; the extended topology supports multiple prioritized Server2 exits:
 
 ```text
 MikroTik
@@ -17,7 +17,7 @@ Server1
                     BFD          NAT
 ```
 
-The preferred path goes through **Server2**. If Server2 or the `wg-exit` tunnel becomes unavailable, **BFD + BIRD** automatically remove the default route from Linux routing table `200`. Linux policy routing then falls through to Server1's normal `main` table, so traffic exits directly through Server1. When Server2 returns, the route is restored automatically.
+The preferred path goes through the highest-priority available Server2. If that exit fails, **BFD + BIRD** remove its default route and Linux policy routing tries the next Server2. If all Server2 exits are unavailable, lookup falls through to Server1's normal `main` table. When a more preferred exit returns, failback is automatic.
 
 On every **UP → DOWN** and **DOWN → UP** transition, only VPN-client conntrack state is cleared, so stale NAT/connection state does not delay failover or failback.
 
@@ -27,12 +27,12 @@ On every **UP → DOWN** and **DOWN → UP** transition, only VPN-client conntra
 
 - incoming AmneziaWG tunnel on Server1;
 - optional additional incoming WireGuard interface;
-- separate inter-server WireGuard tunnel `wg-exit`;
-- BFD between Server1 and Server2;
+- one or more independent inter-server WireGuard exits (`wg-exit`, `wg-exit2`, ...);
+- independent BFD between Server1 and every Server2;
 - BIRD 2.x for automatic default-route installation/removal;
-- Linux policy routing through table `200`;
-- automatic fallback through Server1 WAN;
-- automatic failback through Server2;
+- ordered Linux policy routing through tables `200`, `201`, `202`, ... based on Server2 priority;
+- automatic failover Server2 → next Server2 → Server1 WAN;
+- automatic failback to the most preferred available Server2;
 - event-driven Linux conntrack cleanup from Netlink route events;
 - BFD between MikroTik and Server1 inside AmneziaWG;
 - MikroTik `check-gateway=bfd`;
@@ -48,6 +48,7 @@ The project now includes a local browser-based configurator:
 It can:
 
 - import `wg-exit` configurations for Server1 and Server2;
+- add additional Server2 exits, assign a priority and dedicated Server1 WireGuard interface, and import both sides of each tunnel;
 - optionally import the incoming AWG Server1 configuration and a separate `wg-in.conf`;
 - extract internal tunnel IPs, endpoint, UDP port, WireGuard keys, optional `PresharedKey` and MTU;
 - validate that Server1 and Server2 are in the same wg-exit subnet;
@@ -59,6 +60,24 @@ It can:
 - choose between a dedicated RouterOS table with `dst-address-list`/mangle policy routing or direct static routes in `main` without marking;
 - download individual files or the complete generated set as a `.tar`;
 - keep source-specific Server2 NAT/forwarding in `wg-exit.conf` and Server1 fallback NAT in a dedicated systemd unit.
+
+### Multiple Server2 exits
+
+The configurator supports any practical number of exit Server2 nodes. Each exit gets a separate WireGuard interface on Server1 and its own Linux routing table. A lower `priority` number means a more preferred exit.
+
+Example:
+
+```text
+priority 10 -> wg-exit  -> table 200
+priority 20 -> wg-exit2 -> table 201
+priority 30 -> wg-exit3 -> table 202
+all DOWN    -> main     -> Server1 WAN
+```
+
+BFD monitors every exit independently. `vpn-exit-monitor` flushes VPN conntrack only when the actually selected exit changes; a lower-priority backup flapping while the primary remains healthy does not disturb current sessions.
+
+See [Multiple Server2 exits and prioritized failover](docs/MULTI_EXIT.md).  
+Russian: [Несколько Server2 и приоритетный failover](docs/MULTI_EXIT.ru.md).
 
 ### MikroTik routing modes
 
@@ -254,6 +273,8 @@ A separate Netwatch or ping watchdog is not required for this design.
 │   ├── ARCHITECTURE.md
 │   ├── INSTALL.md
 │   ├── OPERATIONS.md
+│   ├── MULTI_EXIT.md
+│   ├── MULTI_EXIT.ru.md
 │   ├── SECURITY.md
 │   └── VARIABLES.md
 ├── configs/
@@ -271,6 +292,7 @@ A separate Netwatch or ping watchdog is not required for this design.
 - [Architecture](docs/ARCHITECTURE.md)
 - [Installation](docs/INSTALL.md)
 - [Operations and testing](docs/OPERATIONS.md)
+- [Multiple Server2 exits and priorities](docs/MULTI_EXIT.md)
 - [Publication security](docs/SECURITY.md)
 - [Placeholder reference](docs/VARIABLES.md)
 - [Full-guide index](FULL_GUIDE.md)
