@@ -846,6 +846,7 @@ function generateFiles() {
   const wgInPeerAllowed = value("wg-in-peer-allowed");
   const wgInPsk = value("wg-in-psk");
   const awgIf = value("awg-if");
+  const s1ExitIf = value("s1-exit-if") || "wg-exit";
   const wgInIf = value("wg-in-if") || "wg-in";
   const hasWgInConfig = Boolean(wgInAddress && wgInPort && wgInPrivate && wgInPeerPublic && wgInPeerAllowed);
   const mtIf = value("mt-if");
@@ -859,6 +860,16 @@ function generateFiles() {
   const mtDirectRoutes = parseDirectRouteDestinations(value("mt-direct-routes")).values;
   const bfd = value("bfd-interval");
   const mult = value("bfd-multiplier");
+
+  const exits = getExitConfigs()
+    .sort((a, b) => a.priority - b.priority || a.id - b.id)
+    .map((exit, rank) => Object.assign({}, exit, {
+      rank,
+      tableId: Number(table) + rank,
+      s1Ip: ipPart(exit.s1Address),
+      s2Ip: ipPart(exit.s2Address)
+    }));
+  const primaryExit = exits.find((exit) => exit.id === 1);
 
   const allowedServer2 = [s1Ip + "/32", awgNet];
   if (wgInNet) allowedServer2.push(wgInNet);
