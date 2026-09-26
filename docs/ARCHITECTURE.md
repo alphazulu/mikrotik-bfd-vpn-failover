@@ -19,6 +19,8 @@ An optional second incoming WireGuard interface can use the same table with anot
 ip rule add priority 1001 iif <WG_IN_IF> lookup 200
 ```
 
+For a fully generated `wg-in.conf`, that priority-1001 rule is owned by the interface lifecycle itself through `PostUp`/`PreDown`. This matches the tested deployment model and guarantees that the rule appears when `wg-in` is started at boot and is removed when the interface is stopped.
+
 Linux policy rules are evaluated in order. If table `200` does not contain a matching route, lookup continues to the next rule, normally `main`.
 
 Therefore:
