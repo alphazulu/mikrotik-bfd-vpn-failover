@@ -827,6 +827,19 @@ add name=VPN-BFD-Conntrack policy=read,write,test source={
 /system scheduler
 add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack start-time=startup\n${mikrotikPolicyBlock}`;
 
+  const wgInInstallRu = hasWgInConfig
+    ? "\n   server1/wg-in.conf                   -> /etc/wireguard/" + wgInIf + ".conf"
+    : "";
+  const wgInStartRu = hasWgInConfig
+    ? "\n   systemctl enable --now wg-quick@" + wgInIf
+    : "";
+  const wgInInstallEn = hasWgInConfig
+    ? "\n   server1/wg-in.conf                   -> /etc/wireguard/" + wgInIf + ".conf"
+    : "";
+  const wgInStartEn = hasWgInConfig
+    ? "\n   systemctl enable --now wg-quick@" + wgInIf
+    : "";
+
   files["INSTALL.txt"] = state.lang === "ru"
     ? `MikroTik BFD VPN Failover — сгенерированный комплект
 ==================================================
@@ -871,7 +884,7 @@ SERVER1
    sysctl -w net.ipv4.conf.default.rp_filter=2
 
 4. Установить:
-   server1/wg-exit.conf                 -> /etc/wireguard/wg-exit.conf
+   server1/wg-exit.conf                 -> /etc/wireguard/wg-exit.conf${wgInInstallRu}
    server1/bird.conf                    -> /etc/bird/bird.conf
    server1/awg-policy-routing.service   -> /etc/systemd/system/awg-policy-routing.service
    server1/vpn-failover-firewall.service -> /etc/systemd/system/vpn-failover-firewall.service
@@ -879,12 +892,12 @@ SERVER1
    server1/vpn-exit-monitor.service     -> /etc/systemd/system/vpn-exit-monitor.service
 
 5. Права:
-   chmod 600 /etc/wireguard/wg-exit.conf
+   chmod 600 /etc/wireguard/wg-exit.conf${hasWgInConfig ? "\n   chmod 600 /etc/wireguard/" + wgInIf + ".conf" : ""}
    chmod 755 /usr/local/sbin/vpn-exit-monitor.sh
 
 6. Запустить:
    systemctl daemon-reload
-   systemctl enable --now wg-quick@wg-exit
+   systemctl enable --now wg-quick@wg-exit${wgInStartRu}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
    systemctl enable bird
@@ -954,11 +967,11 @@ SERVER1
    sysctl -w net.ipv4.conf.all.rp_filter=2
    sysctl -w net.ipv4.conf.default.rp_filter=2
 
-4. Install the generated Server1 files to their matching /etc and /usr/local paths.
+4. Install the generated Server1 files to their matching /etc and /usr/local paths.${wgInInstallEn}
 
 5. Start:
    systemctl daemon-reload
-   systemctl enable --now wg-quick@wg-exit
+   systemctl enable --now wg-quick@wg-exit${wgInStartEn}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
    systemctl enable bird
@@ -1019,7 +1032,8 @@ function renderResults() {
 
 function updateSecretVisibility() {
   const show = $("show-secrets").checked;
-  ["s1-private", "s1-public", "s2-private", "s2-public", "s1-psk", "s2-psk"].forEach((id) => {
+  ["s1-private", "s1-public", "s2-private", "s2-public", "s1-psk", "s2-psk",
+   "wg-in-private", "wg-in-peer-public", "wg-in-psk"].forEach((id) => {
     $(id).type = show ? "text" : "password";
   });
   if (state.currentFile) {
@@ -1152,11 +1166,13 @@ function privacyCheck() {
 }
 
 function clearAll() {
-  ["paste-s1", "paste-s2", "paste-in", "s1-address", "s2-address", "s2-endpoint",
+  ["paste-s1", "paste-s2", "paste-in", "paste-wgin", "s1-address", "s2-address", "s2-endpoint",
    "s1-private", "s1-public", "s2-private", "s2-public", "s1-psk", "s2-psk",
-   "s1-mtu", "s2-mtu", "awg-server", "awg-mt", "awg-net", "wg-in-net", "mt-address-lists"].forEach((id) => { $(id).value = ""; });
+   "wg-in-private", "wg-in-peer-public", "wg-in-psk", "wg-in-address", "wg-in-port",
+   "wg-in-peer-allowed", "s1-mtu", "s2-mtu", "awg-server", "awg-mt", "awg-net",
+   "wg-in-net", "mt-address-lists"].forEach((id) => { $(id).value = ""; });
 
-  ["file-s1", "file-s2", "file-in"].forEach((id) => { $(id).value = ""; });
+  ["file-s1", "file-s2", "file-in", "file-wgin"].forEach((id) => { $(id).value = ""; });
 
   Object.entries(defaults).forEach(([id, val]) => {
     if ($(id)) $(id).value = val;
@@ -1167,6 +1183,7 @@ function clearAll() {
   setStatus("status-s1", "neutral", "—");
   setStatus("status-s2", "neutral", "—");
   setStatus("status-in", "neutral", "—");
+  setStatus("status-wgin", "neutral", "—");
   $("validation").innerHTML = "";
   $("result-tabs").innerHTML = "";
   $("preview").querySelector("code").textContent = "";
@@ -1181,10 +1198,12 @@ $("lang-en").addEventListener("click", () => setLanguage("en"));
 $("file-s1").addEventListener("change", () => readSelectedFile("file-s1", "paste-s1", "s1"));
 $("file-s2").addEventListener("change", () => readSelectedFile("file-s2", "paste-s2", "s2"));
 $("file-in").addEventListener("change", () => readSelectedFile("file-in", "paste-in", "in"));
+$("file-wgin").addEventListener("change", () => readSelectedFile("file-wgin", "paste-wgin", "wgin"));
 
 $("parse-s1").addEventListener("click", () => importConfig("s1", $("paste-s1").value));
 $("parse-s2").addEventListener("click", () => importConfig("s2", $("paste-s2").value));
 $("parse-in").addEventListener("click", () => importConfig("in", $("paste-in").value));
+$("parse-wgin").addEventListener("click", () => importConfig("wgin", $("paste-wgin").value));
 
 $("validate").addEventListener("click", validate);
 $("generate").addEventListener("click", generateFiles);
