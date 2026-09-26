@@ -222,6 +222,28 @@ assert.match(files["INSTALL.txt"], /vpn-failover-firewall\.service/);
 assert.match(files["INSTALL.txt"], /wg-quick@wg-in/);
 assert.doesNotMatch(files["INSTALL.txt"], /^\s*iptables -t nat .*POSTROUTING -o eth0 -j MASQUERADE/m, "Install guide must not execute a duplicate broad NAT rule");
 
+// Alternative MikroTik mode: direct destination routes in main, without mangle/marks.
+element("mt-policy-mode").value = "direct";
+element("mt-direct-routes").value = "203.0.113.55, 198.51.100.0/24\n203.0.113.55";
+assert.equal(api.validate().ok, true, "Direct-route topology must validate");
+api.generateFiles();
+
+const directMikrotik = api.state.generated["mikrotik/bfd-failover.rsc"];
+assert.match(directMikrotik, /dst-address=203\.0\.113\.55\/32 .*routing-table=main comment="VPN_BFD_DIRECT"/);
+assert.match(directMikrotik, /dst-address=198\.51\.100\.0\/24 .*routing-table=main comment="VPN_BFD_DIRECT"/);
+assert.doesNotMatch(directMikrotik, /\/ip firewall mangle/);
+assert.doesNotMatch(directMikrotik, /mark-connection/);
+assert.doesNotMatch(directMikrotik, /VPN-BFD-Conntrack/);
+assert.doesNotMatch(directMikrotik, /\/routing table add/);
+assert.doesNotMatch(directMikrotik, /dst-address=0\.0\.0\.0\/0/);
+assert.match(api.state.generated["INSTALL.txt"], /прямые маршруты в main|direct routes in main/i);
+
+element("mt-direct-routes").value = "203.0.113.55, not-an-ip";
+assert.equal(api.validate().ok, false, "Invalid direct-route destination must be rejected");
+element("mt-direct-routes").value = "";
+element("mt-policy-mode").value = "policy";
+assert.equal(api.validate().ok, true, "Policy mode must still validate after direct-mode test");
+
 const validS2 = element("s2-address").value;
 element("s2-address").value = "10.77.67.2/30";
 assert.equal(api.validate().ok, false, "Different wg-exit subnet must be rejected");
