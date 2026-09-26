@@ -17,6 +17,8 @@ Use placeholders in documentation and public repositories. Suggested mapping:
 | `<WG_EXIT_S1_IP>` | Server1 address on `wg-exit` |
 | `<WG_EXIT_S2_IP>` | Server2 address on `wg-exit` |
 | `<WG_EXIT_PORT>` | UDP listen port on Server2 |
+| `<WG_EXIT_MTU>` | Optional MTU for `wg-exit` when a non-default value is required |
+| `<WG_EXIT_PRESHARED_KEY>` | Optional WireGuard PresharedKey; sensitive and identical on both peers |
 | `<WG_IN_NET>` | Optional second incoming WireGuard client network on Server1 |
 | `<WG_IN_IF>` | Optional incoming WireGuard interface on Server1 |
 | `<SERVER1_WG_EXIT_PRIVATE_KEY>` | Server1 private key — never commit a real value |
