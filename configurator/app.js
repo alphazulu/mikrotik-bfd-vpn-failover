@@ -96,6 +96,26 @@ function firstAddress(value) {
   return String(value || "").split(",")[0].trim();
 }
 
+function firstIpv4Address(value) {
+  const parts = String(value || "").split(",").map((x) => x.trim());
+  return parts.find((x) => parseCidr(x)) || firstAddress(value);
+}
+
+function validLinuxInterface(value) {
+  return /^[A-Za-z0-9_.:@-]{1,15}$/.test(String(value || ""));
+}
+
+function validNameToken(value) {
+  return /^[A-Za-z0-9_.-]+$/.test(String(value || ""));
+}
+
+function validEndpointHost(value) {
+  const v = String(value || "");
+  if (!/^[A-Za-z0-9.-]+$/.test(v)) return false;
+  if (/^[0-9.]+$/.test(v)) return isIpv4(v);
+  return v.length <= 253 && !v.startsWith(".") && !v.endsWith(".") && !v.includes("..");
+}
+
 function splitEndpoint(endpoint) {
   const value = String(endpoint || "").trim();
   if (!value) return { host: "", port: "" };
@@ -202,9 +222,11 @@ function importConfig(role, text) {
   const peer = parsed.peers[0] || {};
 
   if (role === "s1") {
-    if (parsed.interface.Address) $("s1-address").value = firstAddress(parsed.interface.Address);
+    if (parsed.interface.Address) $("s1-address").value = firstIpv4Address(parsed.interface.Address);
     if (parsed.interface.PrivateKey) $("s1-private").value = parsed.interface.PrivateKey;
+    if (parsed.interface.MTU) $("s1-mtu").value = parsed.interface.MTU;
     if (peer.PublicKey) $("s2-public").value = peer.PublicKey;
+    if (peer.PresharedKey) $("s1-psk").value = peer.PresharedKey;
     if (peer.Endpoint) {
       const ep = splitEndpoint(peer.Endpoint);
       if (ep.host) $("s2-endpoint").value = ep.host;
@@ -213,14 +235,16 @@ function importConfig(role, text) {
   }
 
   if (role === "s2") {
-    if (parsed.interface.Address) $("s2-address").value = firstAddress(parsed.interface.Address);
+    if (parsed.interface.Address) $("s2-address").value = firstIpv4Address(parsed.interface.Address);
     if (parsed.interface.PrivateKey) $("s2-private").value = parsed.interface.PrivateKey;
     if (parsed.interface.ListenPort) $("wg-port").value = parsed.interface.ListenPort;
+    if (parsed.interface.MTU) $("s2-mtu").value = parsed.interface.MTU;
     if (peer.PublicKey) $("s1-public").value = peer.PublicKey;
+    if (peer.PresharedKey) $("s2-psk").value = peer.PresharedKey;
   }
 
   if (role === "in") {
-    const address = firstAddress(parsed.interface.Address);
+    const address = firstIpv4Address(parsed.interface.Address);
     const cidr = parseCidr(address);
     if (cidr) {
       $("awg-server").value = cidr.ip;
@@ -297,8 +321,8 @@ function validate() {
   if (validWgKey(value("s2-public"))) add("good", "PublicKey Server2 получен", "Server2 PublicKey is present");
   else add("bad", "Не задан корректный PublicKey Server2", "A valid Server2 PublicKey is required");
 
-  if (/^[A-Za-z0-9._:\[\]-]+$/.test(value("s2-endpoint"))) add("good", "Endpoint Server2 задан", "Server2 endpoint is present");
-  else add("bad", "Endpoint Server2 пуст или содержит недопустимые символы", "Server2 endpoint is empty or contains unsupported characters");
+  if (validEndpointHost(value("s2-endpoint"))) add("good", "Endpoint Server2 задан", "Server2 endpoint is present");
+  else add("bad", "Endpoint Server2 должен быть IPv4 или DNS-именем без порта", "Server2 endpoint must be an IPv4 address or DNS name without a port");
 
   const port = Number(value("wg-port"));
   if (Number.isInteger(port) && port >= 1 && port <= 65535) add("good", "UDP port корректен", "UDP port is valid");
@@ -328,18 +352,48 @@ function validate() {
   if (wgInNet && !parseCidr(wgInNet)) add("bad", "Дополнительный WG client subnet некорректен", "Additional WG client subnet is invalid");
   else if (wgInNet) add("good", "Дополнительный WG client subnet будет добавлен", "Additional WG client subnet will be included");
 
-  ["s1-wan", "s2-wan", "awg-if", "mt-if"].forEach((id) => {
-    if (safeToken(value(id))) add("good", id + " задан", id + " is set");
-    else add("bad", id + " не задан или содержит кавычки/перенос строки", id + " is missing or contains quotes/newlines");
+  ["s1-wan", "s2-wan", "awg-if"].forEach((id) => {
+    if (validLinuxInterface(value(id))) add("good", id + " задан", id + " is set");
+    else add("bad", id + " должен быть корректным Linux interface name (до 15 символов)", id + " must be a valid Linux interface name (up to 15 characters)");
   });
 
-  if (wgInNet && !safeToken(value("wg-in-if"))) {
-    add("bad", "Нужно имя дополнительного WG интерфейса", "Additional WG interface name is required");
+  if (!safeToken(value("mt-if"))) add("bad", "MikroTik interface не задан или содержит кавычки/перенос строки", "MikroTik interface is missing or contains quotes/newlines");
+  else add("good", "MikroTik interface задан", "MikroTik interface is set");
+
+  if (wgInNet && !validLinuxInterface(value("wg-in-if"))) {
+    add("bad", "Нужно корректное имя дополнительного WG интерфейса", "A valid additional WG interface name is required");
   }
+
+  if (!parseCidr(value("mt-dst"))) add("bad", "MikroTik dst-address должен быть IPv4/CIDR", "MikroTik dst-address must be IPv4/CIDR");
+  else add("good", "MikroTik dst-address корректен", "MikroTik dst-address is valid");
+
+  if (!validNameToken(value("mt-route-table"))) add("bad", "Имя MikroTik routing table некорректно", "MikroTik routing table name is invalid");
+  if (!validNameToken(value("connmark"))) add("bad", "Connection mark некорректен", "Connection mark is invalid");
 
   const table = Number(value("route-table"));
   if (Number.isInteger(table) && table > 0) add("good", "Linux routing table корректна", "Linux routing table is valid");
   else add("bad", "Linux routing table должна быть положительным числом", "Linux routing table must be a positive integer");
+
+  const s1Mtu = value("s1-mtu");
+  const s2Mtu = value("s2-mtu");
+  for (const [label, mtu] of [["Server1 MTU", s1Mtu], ["Server2 MTU", s2Mtu]]) {
+    if (!mtu) continue;
+    const n = Number(mtu);
+    if (Number.isInteger(n) && n >= 576 && n <= 65535) add("good", label + " принят", label + " accepted");
+    else add("bad", label + " должен быть 576..65535", label + " must be 576..65535");
+  }
+
+  const psk1 = value("s1-psk");
+  const psk2 = value("s2-psk");
+  if (psk1 || psk2) {
+    if (!validWgKey(psk1) || !validWgKey(psk2)) {
+      add("bad", "PresharedKey должен быть задан на обеих сторонах в WireGuard-формате", "PresharedKey must be present on both sides in WireGuard format");
+    } else if (psk1 !== psk2) {
+      add("bad", "PresharedKey Server1 и Server2 не совпадают", "Server1 and Server2 PresharedKey values do not match");
+    } else {
+      add("good", "PresharedKey согласован на обеих сторонах", "PresharedKey matches on both sides");
+    }
+  }
 
   const interval = Number(value("bfd-interval"));
   const mult = Number(value("bfd-multiplier"));
@@ -385,6 +439,10 @@ function generateFiles() {
   const s2Ip = ipPart(s2Addr);
   const s1Private = value("s1-private");
   const s2Private = value("s2-private");
+  const s1Psk = value("s1-psk");
+  const s2Psk = value("s2-psk");
+  const s1Mtu = value("s1-mtu");
+  const s2Mtu = value("s2-mtu");
   const s1Public = value("s1-public");
   const s2Public = value("s2-public");
   const endpoint = value("s2-endpoint");
@@ -419,6 +477,22 @@ function generateFiles() {
     ? "\n    conntrack -D -s " + wgInNet + " >/dev/null 2>&1 || true"
     : "";
 
+  const s1MtuLine = s1Mtu ? "\nMTU = " + s1Mtu : "";
+  const s2MtuLine = s2Mtu ? "\nMTU = " + s2Mtu : "";
+  const pskLine = s1Psk && s2Psk && s1Psk === s2Psk ? "\nPresharedKey = " + s1Psk : "";
+
+  const server2NatExtra = wgInNet
+    ? "\nPostUp = iptables -t nat -C POSTROUTING -s " + wgInNet + " -o " + s2Wan + " -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s " + wgInNet + " -o " + s2Wan + " -m comment --comment wg-exit-failover -j MASQUERADE" +
+      "\nPostDown = iptables -t nat -D POSTROUTING -s " + wgInNet + " -o " + s2Wan + " -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || true"
+    : "";
+
+  const fallbackNatExtraStart = wgInNet
+    ? "\nExecStart=/bin/sh -c '/usr/sbin/iptables -t nat -C POSTROUTING -s " + wgInNet + " -o " + s1Wan + " -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || /usr/sbin/iptables -t nat -A POSTROUTING -s " + wgInNet + " -o " + s1Wan + " -m comment --comment vpn-failover-fallback -j MASQUERADE'"
+    : "";
+  const fallbackNatExtraStop = wgInNet
+    ? "\nExecStop=/bin/sh -c '/usr/sbin/iptables -t nat -D POSTROUTING -s " + wgInNet + " -o " + s1Wan + " -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || true'"
+    : "";
+
   const routingTableClause = mtTable && mtTable !== "main" ? " routing-table=" + qRouter(mtTable) : "";
 
   const files = {};
@@ -426,11 +500,11 @@ function generateFiles() {
   files["server1/wg-exit.conf"] =
 `[Interface]
 Address = ${s1Addr}
-PrivateKey = ${s1Private}
+PrivateKey = ${s1Private}${s1MtuLine}
 Table = off
 
 [Peer]
-PublicKey = ${s2Public}
+PublicKey = ${s2Public}${pskLine}
 Endpoint = ${endpoint}:${port}
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
@@ -440,13 +514,17 @@ PersistentKeepalive = 25
 `[Interface]
 Address = ${s2Addr}
 ListenPort = ${port}
-PrivateKey = ${s2Private}
+PrivateKey = ${s2Private}${s2MtuLine}
 
-PostUp = iptables -I FORWARD 1 -i %i -j ACCEPT
-PostDown = iptables -D FORWARD -i %i -j ACCEPT
+PostUp = iptables -C FORWARD -i %i -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i %i -j ACCEPT
+PostUp = iptables -C FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+PostUp = iptables -t nat -C POSTROUTING -s ${awgNet} -o ${s2Wan} -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s ${awgNet} -o ${s2Wan} -m comment --comment wg-exit-failover -j MASQUERADE${server2NatExtra}
+PostDown = iptables -D FORWARD -i %i -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+PostDown = iptables -t nat -D POSTROUTING -s ${awgNet} -o ${s2Wan} -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || true
 
 [Peer]
-PublicKey = ${s1Public}
+PublicKey = ${s1Public}${pskLine}
 AllowedIPs = ${allowedServer2.join(", ")}
 `;
 
@@ -522,6 +600,22 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/sh -c '/usr/sbin/ip rule show | grep -Fq "iif ${awgIf} lookup ${table}" || /usr/sbin/ip rule add priority 1000 iif ${awgIf} lookup ${table}'${policyExtraStart}
 ExecStop=/bin/sh -c '/usr/sbin/ip rule del priority 1000 iif ${awgIf} lookup ${table} 2>/dev/null || true'${policyExtraStop}
+
+[Install]
+WantedBy=multi-user.target
+`;
+
+  files["server1/vpn-failover-firewall.service"] =
+`[Unit]
+Description=Persistent fallback NAT for VPN client traffic
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '/usr/sbin/iptables -t nat -C POSTROUTING -s ${awgNet} -o ${s1Wan} -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || /usr/sbin/iptables -t nat -A POSTROUTING -s ${awgNet} -o ${s1Wan} -m comment --comment vpn-failover-fallback -j MASQUERADE'${fallbackNatExtraStart}
+ExecStop=/bin/sh -c '/usr/sbin/iptables -t nat -D POSTROUTING -s ${awgNet} -o ${s1Wan} -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || true'${fallbackNatExtraStop}
 
 [Install]
 WantedBy=multi-user.target
@@ -659,6 +753,7 @@ SERVER1
    server1/wg-exit.conf                 -> /etc/wireguard/wg-exit.conf
    server1/bird.conf                    -> /etc/bird/bird.conf
    server1/awg-policy-routing.service   -> /etc/systemd/system/awg-policy-routing.service
+   server1/vpn-failover-firewall.service -> /etc/systemd/system/vpn-failover-firewall.service
    server1/vpn-exit-monitor.sh          -> /usr/local/sbin/vpn-exit-monitor.sh
    server1/vpn-exit-monitor.service     -> /etc/systemd/system/vpn-exit-monitor.service
 
@@ -666,13 +761,11 @@ SERVER1
    chmod 600 /etc/wireguard/wg-exit.conf
    chmod 755 /usr/local/sbin/vpn-exit-monitor.sh
 
-6. Fallback NAT Server1:
-   iptables -t nat -C POSTROUTING -o ${s1Wan} -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o ${s1Wan} -j MASQUERADE
-
-7. Запустить:
+6. Запустить:
    systemctl daemon-reload
    systemctl enable --now wg-quick@wg-exit
    systemctl enable --now awg-policy-routing.service
+   systemctl enable --now vpn-failover-firewall.service
    systemctl enable bird
    systemctl restart bird
    systemctl enable --now vpn-exit-monitor.service
@@ -740,13 +833,11 @@ SERVER1
 
 4. Install the generated Server1 files to their matching /etc and /usr/local paths.
 
-5. Fallback NAT:
-   iptables -t nat -C POSTROUTING -o ${s1Wan} -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o ${s1Wan} -j MASQUERADE
-
-6. Start:
+5. Start:
    systemctl daemon-reload
    systemctl enable --now wg-quick@wg-exit
    systemctl enable --now awg-policy-routing.service
+   systemctl enable --now vpn-failover-firewall.service
    systemctl enable bird
    systemctl restart bird
    systemctl enable --now vpn-exit-monitor.service
@@ -805,7 +896,7 @@ function renderResults() {
 
 function updateSecretVisibility() {
   const show = $("show-secrets").checked;
-  ["s1-private", "s1-public", "s2-private", "s2-public"].forEach((id) => {
+  ["s1-private", "s1-public", "s2-private", "s2-public", "s1-psk", "s2-psk"].forEach((id) => {
     $(id).type = show ? "text" : "password";
   });
   if (state.currentFile) {
@@ -939,8 +1030,8 @@ function privacyCheck() {
 
 function clearAll() {
   ["paste-s1", "paste-s2", "paste-in", "s1-address", "s2-address", "s2-endpoint",
-   "s1-private", "s1-public", "s2-private", "s2-public", "awg-server", "awg-mt",
-   "awg-net", "wg-in-net"].forEach((id) => { $(id).value = ""; });
+   "s1-private", "s1-public", "s2-private", "s2-public", "s1-psk", "s2-psk",
+   "s1-mtu", "s2-mtu", "awg-server", "awg-mt", "awg-net", "wg-in-net"].forEach((id) => { $(id).value = ""; });
 
   ["file-s1", "file-s2", "file-in"].forEach((id) => { $(id).value = ""; });
 
