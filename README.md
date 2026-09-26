@@ -53,7 +53,7 @@ Server1
 - проверять, что Server1/Server2 находятся в одной wg-exit подсети;
 - проверять client subnet и BFD-параметры;
 - генерировать готовые конфиги Server1, Server2 и MikroTik;
-- генерировать BIRD/BFD, Linux policy routing, systemd units, persistent fallback NAT и event-driven conntrack cleanup;
+- генерировать BIRD/BFD, Linux policy routing, systemd units, persistent Server1 FORWARD/fallback NAT и event-driven conntrack cleanup;
 - формировать MikroTik `check-gateway=bfd` и очистку только `CM_VPN`;
 - скачивать отдельные файлы или весь комплект одним `.tar`;
 - сохранять source-specific NAT/forwarding для Server2 в `wg-exit.conf`, а fallback NAT Server1 — в отдельном systemd unit.
