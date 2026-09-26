@@ -948,15 +948,25 @@ PersistentKeepalive = 25
 
   if (hasWgInConfig) {
     const wgInPskLine = wgInPsk ? "\nPresharedKey = " + wgInPsk : "";
+    const wgInPriorityBase = exits.length === 1 ? 1001 : 2000;
+    let wgInPolicyUp = "";
+    let wgInPolicyDown = "";
+
+    exits.forEach((exit) => {
+      const inPriority = wgInPriorityBase + exit.rank;
+      wgInPolicyUp += "PostUp = ip rule show | grep -Fq \"iif %i lookup " + exit.tableId +
+        "\" || ip rule add priority " + inPriority + " iif %i lookup " + exit.tableId + "\n";
+      wgInPolicyDown = "PreDown = ip rule del priority " + inPriority + " iif %i lookup " + exit.tableId +
+        " 2>/dev/null || true\n" + wgInPolicyDown;
+    });
+
     files["server1/wg-in.conf"] =
 `[Interface]
 Address = ${wgInAddress}
 ListenPort = ${wgInPort}
 PrivateKey = ${wgInPrivate}
 
-PostUp = ip rule show | grep -Fq "iif %i lookup ${table}" || ip rule add priority 1001 iif %i lookup ${table}
-PreDown = ip rule del priority 1001 iif %i lookup ${table} 2>/dev/null || true
-
+${wgInPolicyUp}${wgInPolicyDown}
 PostUp = iptables -C FORWARD -i %i -o %i -m comment --comment wg-in-failover -j DROP 2>/dev/null || iptables -I FORWARD 1 -i %i -o %i -m comment --comment wg-in-failover -j DROP
 PostUp = iptables -C FORWARD -i %i -m comment --comment wg-in-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -i %i -m comment --comment wg-in-failover -j ACCEPT
 PostUp = iptables -C FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-in-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 3 -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-in-failover -j ACCEPT
@@ -969,7 +979,6 @@ PublicKey = ${wgInPeerPublic}${wgInPskLine}
 AllowedIPs = ${wgInPeerAllowed}
 `;
   }
-
   files["server2/wg-exit.conf"] =
 `[Interface]
 Address = ${s2Addr}
