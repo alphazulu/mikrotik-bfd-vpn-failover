@@ -26,7 +26,7 @@ The configurator produces:
 - Server1 event-driven conntrack monitor and service;
 - Server2 `wg-exit.conf`;
 - Server2 BIRD configuration;
-- MikroTik RouterOS BFD/failover script;
+- MikroTik RouterOS BFD/failover script with either address-list/mangle policy routing or direct destination routes;
 - installation instructions;
 - a local `.tar` bundle containing the complete generated set.
 
@@ -35,3 +35,13 @@ The generated bundle may contain real private keys imported by the user and must
 ## Language
 
 The UI supports Russian and English from one implementation so both interfaces stay functionally identical.
+
+
+## MikroTik routing modes
+
+The UI offers two mutually exclusive modes:
+
+- **Address-list + mangle** — generates connection/routing marks, a dedicated routing table, and selective conntrack cleanup.
+- **Direct routes** — generates BFD-monitored static routes in `main` for the supplied IPv4/CIDR destinations and does not generate mangle/connection marks.
+
+Direct-route mode deliberately omits selective MikroTik conntrack cleanup because there is no connection mark to target.
