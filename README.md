@@ -47,8 +47,8 @@ Server1
 
 Он умеет:
 
-- импортировать конфигурации WireGuard/AmneziaWG для Server1 и Server2;
-- опционально импортировать входящий AWG/WG-конфиг Server1;
+- импортировать `wg-exit` конфигурации Server1 и Server2;
+- опционально импортировать входящий AWG-конфиг Server1 и отдельный `wg-in.conf`;
 - автоматически извлекать внутренние tunnel IP, endpoint, UDP port, WireGuard keys, optional `PresharedKey` и MTU;
 - проверять, что Server1/Server2 находятся в одной wg-exit подсети;
 - проверять client subnet и BFD-параметры;
