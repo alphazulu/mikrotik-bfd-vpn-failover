@@ -1,15 +1,20 @@
-# Full guide
+# Руководство проекта
 
-This repository documents a MikroTik → AmneziaWG → Ubuntu Server1 → WireGuard exit → Server2 design with BFD-based failover/failback and selective conntrack cleanup.
+Основная документация проекта ведётся на русском языке:
 
-The complete guide is split into focused documents:
+- [Русская версия README](README.md)
+- [English version](README.en.md)
 
-1. [Architecture](docs/ARCHITECTURE.md) — routing model, BFD/BIRD, NAT, conntrack and failure domains.
-2. [Deployment](docs/INSTALL.md) — Server1, Server2 and MikroTik setup.
-3. [Operations](docs/OPERATIONS.md) — health checks, failure tests, route events and troubleshooting.
-4. [Variables](docs/VARIABLES.md) — placeholder reference.
-5. [Security](docs/SECURITY.md) — publication and secret-handling checklist.
+Обе версии должны обновляться синхронно при каждом изменении функционала.
 
-Ready-to-adapt sanitized examples are under `configs/`.
+Подробные технические материалы разбиты на отдельные документы:
 
-No production public IP addresses, private keys, credentials or identifying hostnames are included.
+1. [Архитектура](docs/ARCHITECTURE.md)
+2. [Установка и настройка](docs/INSTALL.md)
+3. [Эксплуатация и тестирование](docs/OPERATIONS.md)
+4. [Переменные и placeholders](docs/VARIABLES.md)
+5. [Безопасность публикации](docs/SECURITY.md)
+
+Готовые обезличенные примеры конфигураций находятся в каталоге `configs/`.
+
+В репозитории не должны появляться реальные production IP-адреса, приватные ключи, пароли, токены и идентифицирующие инфраструктуру данные.
