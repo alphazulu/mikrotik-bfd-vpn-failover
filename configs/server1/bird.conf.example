@@ -1,0 +1,44 @@
+# BIRD 2.x example for Server1.
+# All addresses are placeholders.
+
+router id <WG_EXIT_S1_IP>;
+
+ipv4 table exit4;
+
+protocol device {
+}
+
+protocol bfd bfd_exit {
+    interface "wg-exit" {
+        interval 500 ms;
+        idle tx interval 500 ms;
+        multiplier 3;
+    };
+
+    interface "<AWG_IF>" {
+        interval 500 ms;
+        idle tx interval 500 ms;
+        multiplier 3;
+    };
+
+    neighbor <WG_EXIT_S2_IP> dev "wg-exit" local <WG_EXIT_S1_IP>;
+    neighbor <AWG_MIKROTIK_IP> dev "<AWG_IF>" local <AWG_SERVER_IP>;
+}
+
+protocol static exit_default {
+    ipv4 {
+        table exit4;
+    };
+
+    route 0.0.0.0/0 via <WG_EXIT_S2_IP> dev "wg-exit" bfd;
+}
+
+protocol kernel kernel_exit {
+    kernel table 200;
+
+    ipv4 {
+        table exit4;
+        import none;
+        export all;
+    };
+}
