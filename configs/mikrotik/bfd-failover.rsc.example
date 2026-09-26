@@ -21,9 +21,8 @@ add chain=prerouting action=mark-routing new-routing-mark="<MT_ROUTE_TABLE>" pas
 # The mangle lookup tries <MT_ROUTE_TABLE> first. If its BFD route is inactive,
 # the lookup fails and processing continues to user rules. Make the fallback
 # to main explicit:
-/routing rule
-:if ([:len [find where comment="VPN_BFD_FALLBACK"]] = 0) do={
-    add action=lookup routing-mark="<MT_ROUTE_TABLE>" table=main comment="VPN_BFD_FALLBACK"
+:if ([:len [/routing rule find where comment="VPN_BFD_FALLBACK"]] = 0) do={
+    /routing rule add action=lookup routing-mark="<MT_ROUTE_TABLE>" table=main comment="VPN_BFD_FALLBACK"
 }
 
 # Fasttrack skips mangle. Limit catch-all fasttrack rules to unmarked connections.
