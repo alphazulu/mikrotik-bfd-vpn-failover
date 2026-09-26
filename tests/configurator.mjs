@@ -224,6 +224,79 @@ assert.match(files["INSTALL.txt"], /vpn-failover-firewall\.service/);
 assert.match(files["INSTALL.txt"], /wg-quick@wg-in/);
 assert.doesNotMatch(files["INSTALL.txt"], /^\s*iptables -t nat .*POSTROUTING -o eth0 -j MASQUERADE/m, "Install guide must not execute a duplicate broad NAT rule");
 
+// Multi-exit acceptance: Server1 maintains independent tunnels and ordered policy tables.
+api.state.extraExits = [{
+  id: 2,
+  label: "Server2 #2",
+  priority: "20",
+  s1Interface: "wg-exit2",
+  s1Address: "10.77.67.1/30",
+  s2Address: "10.77.67.2/30",
+  endpoint: "198.51.100.20",
+  port: "51830",
+  s1Private: keyA,
+  s1Public: keyA,
+  s2Private: keyB,
+  s2Public: keyB,
+  psk1: "",
+  psk2: "",
+  s1Mtu: "",
+  s2Mtu: "",
+  s2Wan: "eth0",
+  s1Text: "",
+  s2Text: ""
+}];
+
+assert.equal(api.validate().ok, true, "Two-exit topology must validate");
+api.generateFiles();
+let multi = api.state.generated;
+
+assert.equal(Object.keys(multi).length, 14, "Second exit must add Server1 WG plus Server2 WG/BIRD files");
+assert.match(multi["server1/wg-exit2.conf"], /Address = 10\.77\.67\.1\/30/);
+assert.match(multi["server1/wg-exit2.conf"], /Endpoint = 198\.51\.100\.20:51830/);
+assert.match(multi["server2-2/wg-exit.conf"], /Address = 10\.77\.67\.2\/30/);
+assert.match(multi["server2-2/wg-exit.conf"], /AllowedIPs = 10\.77\.67\.1\/32, 10\.88\.99\.0\/24, 10\.88\.100\.0\/24/);
+assert.match(multi["server2-2/bird.conf"], /neighbor 10\.77\.67\.1 dev "wg-exit" local 10\.77\.67\.2/);
+
+assert.match(multi["server1/bird.conf"], /ipv4 table exit4_1;/);
+assert.match(multi["server1/bird.conf"], /ipv4 table exit4_2;/);
+assert.match(multi["server1/bird.conf"], /neighbor 10\.77\.66\.2 dev "wg-exit" local 10\.77\.66\.1/);
+assert.match(multi["server1/bird.conf"], /neighbor 10\.77\.67\.2 dev "wg-exit2" local 10\.77\.67\.1/);
+assert.match(multi["server1/bird.conf"], /protocol kernel kernel_exit_1[\s\S]*?kernel table 200;/);
+assert.match(multi["server1/bird.conf"], /protocol kernel kernel_exit_2[\s\S]*?kernel table 201;/);
+
+assert.match(multi["server1/awg-policy-routing.service"], /priority 1000 iif awg0 lookup 200/);
+assert.match(multi["server1/awg-policy-routing.service"], /priority 1001 iif awg0 lookup 201/);
+assert.match(multi["server1/wg-in.conf"], /priority 2000 iif %i lookup 200/);
+assert.match(multi["server1/wg-in.conf"], /priority 2001 iif %i lookup 201/);
+assert.match(multi["server1/vpn-exit-monitor.sh"], /TABLES=\(200 201\)/);
+assert.match(multi["INSTALL.txt"], /server2-2\/wg-exit\.conf/);
+assert.match(multi["INSTALL.txt"], /wg-quick@wg-exit2/);
+
+// Lower numeric priority must become the first Linux policy table.
+api.state.extraExits[0].priority = "5";
+assert.equal(api.validate().ok, true, "Reordered priorities must validate");
+api.generateFiles();
+multi = api.state.generated;
+assert.match(multi["server1/bird.conf"], /protocol static exit_default_1[\s\S]*?route 0\.0\.0\.0\/0 via 10\.77\.67\.2 bfd;/);
+assert.match(multi["server1/bird.conf"], /protocol kernel kernel_exit_1[\s\S]*?kernel table 200;/);
+assert.match(multi["server1/bird.conf"], /protocol static exit_default_2[\s\S]*?route 0\.0\.0\.0\/0 via 10\.77\.66\.2 bfd;/);
+assert.match(multi["server1/bird.conf"], /protocol kernel kernel_exit_2[\s\S]*?kernel table 201;/);
+
+// Ambiguous priorities and reused transfer subnets must be rejected.
+api.state.extraExits[0].priority = "10";
+assert.equal(api.validate().ok, false, "Duplicate exit priorities must be rejected");
+api.state.extraExits[0].priority = "20";
+api.state.extraExits[0].s1Address = "10.77.66.1/30";
+api.state.extraExits[0].s2Address = "10.77.66.2/30";
+assert.equal(api.validate().ok, false, "Reused wg-exit transfer subnet must be rejected");
+api.state.extraExits[0].s1Address = "10.77.67.1/30";
+api.state.extraExits[0].s2Address = "10.77.67.2/30";
+
+api.state.extraExits = [];
+assert.equal(api.validate().ok, true, "Single-exit topology must remain valid after multi-exit tests");
+api.generateFiles();
+
 // Alternative MikroTik mode: direct destination routes in main, without mangle/marks.
 element("mt-policy-mode").value = "direct";
 element("mt-direct-routes").value = "203.0.113.55, 198.51.100.0/24\n203.0.113.55";
