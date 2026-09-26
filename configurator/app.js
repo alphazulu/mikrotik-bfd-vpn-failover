@@ -580,7 +580,7 @@ add address=${awgMt}/32 network=${awgServer} interface=${qRouter(mtIf)} comment=
 add interfaces=${qRouter(mtIf)} addresses=${awgServer}/32 min-rx=${bfd}ms min-tx=${bfd}ms multiplier=${mult}
 
 /ip route
-add dst-address=${mtDst} gateway=${awgServer}%${mtIf} check-gateway=bfd distance=1${routingTableClause} comment="VPN_BFD_PRIMARY"
+add dst-address=${mtDst} gateway=${qRouter(awgServer + "%" + mtIf)} check-gateway=bfd distance=1${routingTableClause} comment="VPN_BFD_PRIMARY"
 
 /system script
 add name=VPN-BFD-Conntrack policy=read,write,test source={
