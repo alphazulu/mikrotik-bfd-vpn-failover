@@ -2,52 +2,76 @@
 
 ## 1. Routing model
 
-Server1 has two possible Internet exits for VPN client traffic:
+Server1 has an ordered set of Internet exits for VPN client traffic:
 
-1. preferred path through Server2 using `wg-exit`;
-2. fallback path through Server1's normal WAN and `main` routing table.
+1. one or more Server2 nodes, each reached through its own WireGuard interface;
+2. final fallback through Server1's normal WAN and `main` routing table.
 
-The key mechanism is Linux policy routing:
+Every Server2 has a unique numeric priority. Lower values are preferred.
+
+The key mechanism is Linux policy routing. With one exit:
 
 ```bash
 ip rule add priority 1000 iif <AWG_IF> lookup 200
 ```
 
-An optional second incoming WireGuard interface can use the same table with another priority:
+With three prioritized exits the configurator generates an ordered chain:
+
+```bash
+ip rule add priority 1000 iif <AWG_IF> lookup 200
+ip rule add priority 1001 iif <AWG_IF> lookup 201
+ip rule add priority 1002 iif <AWG_IF> lookup 202
+```
+
+The highest-priority Server2 owns the first table, the next Server2 owns the next table, and so on.
+
+An optional second incoming WireGuard interface uses the same ordered exit tables. In a single-exit topology the historical form remains:
 
 ```bash
 ip rule add priority 1001 iif <WG_IN_IF> lookup 200
 ```
 
-For a fully generated `wg-in.conf`, that priority-1001 rule is owned by the interface lifecycle itself through `PostUp`/`PreDown`. This matches the tested deployment model and guarantees that the rule appears when `wg-in` is started at boot and is removed when the interface is stopped.
+In a multi-exit topology the generated `wg-in.conf` owns a separate ordered rule range, for example:
 
-Linux policy rules are evaluated in order. If table `200` does not contain a matching route, lookup continues to the next rule, normally `main`.
+```bash
+ip rule add priority 2000 iif <WG_IN_IF> lookup 200
+ip rule add priority 2001 iif <WG_IN_IF> lookup 201
+ip rule add priority 2002 iif <WG_IN_IF> lookup 202
+```
 
-Therefore:
+These rules are installed and removed by `PostUp`/`PreDown`.
+
+Linux policy rules are evaluated in order. If one table does not contain a matching route, lookup continues to the next rule.
+
+For example:
 
 ```text
-BFD UP
-  table 200 contains default -> wg-exit -> Server2
-
-BFD DOWN
-  table 200 has no default -> lookup continues -> main -> Server1 WAN
+table 200 has default -> Server2-A
+table 200 empty       -> try table 201
+table 201 has default -> Server2-B
+table 201 empty       -> try table 202
+all exit tables empty -> main -> Server1 WAN
 ```
+
+This means Server1 does not need to rewrite one route's gateway during failover. Each Server2 owns its own table and BFD only adds/removes that exit's default route.
 
 ## 2. BFD and BIRD
 
-BFD runs across `wg-exit` between Server1 and Server2. BIRD on Server1 owns a static default route with the `bfd` attribute.
+BFD runs independently across every Server1 ↔ Server2 WireGuard interface. BIRD on Server1 owns one static default route per exit, each with the `bfd` attribute and its own BIRD/Linux routing table.
 
-Conceptually:
+Conceptually for each exit:
 
 ```text
 BFD session UP
-    -> static default route is valid
-    -> kernel protocol exports it to Linux table 200
+    -> that exit's static default route is valid
+    -> its kernel protocol exports the route to its Linux table
 
 BFD session DOWN
-    -> static route is withdrawn
-    -> Linux table 200 loses its default route
+    -> only that exit's route is withdrawn
+    -> policy lookup automatically continues to the next table
 ```
+
+The configurator deliberately uses one WireGuard interface per Server2. This avoids ambiguous peer selection when multiple exit peers would otherwise claim the same `AllowedIPs = 0.0.0.0/0` on one interface.
 
 Recommended BFD timers:
 
@@ -86,7 +110,7 @@ The project supplies a oneshot systemd unit, `vpn-failover-firewall.service`, wh
 
 Changing a route does not automatically rebuild existing connection tracking and NAT state. Therefore both failover and failback explicitly clear conntrack entries for VPN client subnets.
 
-On Server1 this is done by a Netlink-driven monitor which watches BIRD's route add/delete events.
+On Server1 this is done by a Netlink-driven monitor. In a multi-exit deployment it calculates the actually selected exit (the first priority-ordered table that currently contains a BIRD default route) and flushes VPN conntrack only when that selected exit changes. A backup route flapping while a more preferred route remains active does not trigger cleanup.
 
 On MikroTik existing connections are already marked `CM_VPN`, so the router removes only:
 
@@ -143,3 +167,8 @@ No policy-routing marks are used. The configurator accepts one or more IPv4/CIDR
 When the BFD session is DOWN, those specific routes become inactive and normal RouterOS longest-prefix routing falls back to other matching routes, usually the regular Internet default route.
 
 This mode intentionally does not generate mangle rules, connection marks, or selective MikroTik conntrack cleanup. It is simpler and works well when the set of destinations can be expressed directly as routes.
+
+
+## 8. Multi-exit details
+
+See also: [Multiple Server2 exits and prioritized failover](MULTI_EXIT.md) and the [Russian version](MULTI_EXIT.ru.md).
