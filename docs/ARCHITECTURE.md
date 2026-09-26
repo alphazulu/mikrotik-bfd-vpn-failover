@@ -78,7 +78,7 @@ On Server2 the generated/reference configuration installs source-specific `MASQU
 
 When Server2 becomes unavailable, the same traffic leaves Server1 directly through its WAN. Server1 therefore needs source NAT for the VPN client subnet(s) on its WAN interface.
 
-The project supplies a oneshot systemd unit, `vpn-failover-firewall.service`, which adds source-specific fallback `MASQUERADE` rules on start and removes only its own commented rules on stop. This makes fallback NAT persistent across reboot without flushing or replacing unrelated firewall state.
+The project supplies a oneshot systemd unit, `vpn-failover-firewall.service`, which adds source-specific fallback `MASQUERADE` rules on start and removes only its own commented rules on stop. The same unit also installs explicit Server1 forwarding rules for incoming VPN interfaces: forwarded traffic from each VPN interface is permitted, established/related return traffic is allowed back to that interface, and same-interface hairpin forwarding is dropped. This keeps the generated setup usable with restrictive FORWARD policies without flushing or replacing unrelated firewall state.
 
 ## 4. Conntrack behavior
 
