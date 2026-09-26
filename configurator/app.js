@@ -512,6 +512,9 @@ function generateFiles() {
     : "";
 
   const routingTableClause = mtTable && mtTable !== "main" ? " routing-table=" + qRouter(mtTable) : "";
+  const routingTableEnsure = mtTable && mtTable !== "main"
+    ? "/routing table\n:if ([:len [find where name=" + qRouter(mtTable) + "]] = 0) do={ add fib name=" + qRouter(mtTable) + " }\n\n"
+    : "";
 
   let mikrotikPolicyBlock = "";
   if (mtAddressLists.length) {
@@ -711,7 +714,7 @@ add address=${awgMt}/32 network=${awgServer} interface=${qRouter(mtIf)} comment=
 /routing bfd configuration
 add interfaces=${qRouter(mtIf)} addresses=${awgServer}/32 min-rx=${bfd}ms min-tx=${bfd}ms multiplier=${mult}
 
-/ip route
+${routingTableEnsure}/ip route
 add dst-address=${mtDst} gateway=${qRouter(awgServer + "%" + mtIf)} check-gateway=bfd distance=1${routingTableClause} comment="VPN_BFD_PRIMARY"
 
 /system script
