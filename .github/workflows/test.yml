@@ -44,12 +44,18 @@ jobs:
         run: |
           bird -p -c tests/.generated/server1-bird.conf
           bird -p -c tests/.generated/server2-bird.conf
+          bird -p -c tests/.generated/multi-server1-bird.conf
+          bird -p -c tests/.generated/multi-server2-bird.conf
 
       - name: Validate generated WireGuard configs
         run: |
           wg-quick strip tests/.generated/server1-wg-exit.conf >/dev/null
           wg-quick strip tests/.generated/server2-wg-exit.conf >/dev/null
           wg-quick strip tests/.generated/server1-wg-in.conf >/dev/null
+          wg-quick strip tests/.generated/multi-server1-wg-exit2.conf >/dev/null
+          wg-quick strip tests/.generated/multi-server2-wg-exit.conf >/dev/null
 
       - name: Validate generated shell
-        run: bash -n tests/.generated/vpn-exit-monitor.sh
+        run: |
+          bash -n tests/.generated/vpn-exit-monitor.sh
+          bash -n tests/.generated/multi-vpn-exit-monitor.sh
