@@ -219,13 +219,22 @@ assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="policy-list-
 assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="policy-list-b"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="policy-list-c"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-type=!local/);
-assert.match(files["mikrotik/bfd-failover.rsc"], /new-routing-mark="VPN_RM"/);
-assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /new-routing-mark="VPN"/, "Routing mark must not be the table name");
-assert.match(files["mikrotik/bfd-failover.rsc"], /action=lookup routing-mark="VPN_RM" table="VPN" comment="VPN_BFD_LOOKUP"/);
-assert.match(files["mikrotik/bfd-failover.rsc"], /action=lookup routing-mark="VPN_RM" table=main comment="VPN_BFD_FALLBACK"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /new-routing-mark="VPN"/);
+assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /VPN_RM/, "No synthetic routing mark/table should be generated");
+assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /VPN_BFD_LOOKUP/, "Mangle already performs the VPN-table lookup");
+assert.match(files["mikrotik/bfd-failover.rsc"], /action=lookup routing-mark="VPN" table=main comment="VPN_BFD_FALLBACK"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /check-gateway=bfd comment="VPN_BFD_PRIMARY" disabled=no distance=1 dst-address=0\.0\.0\.0\/0 gateway="10\.88\.99\.1%wg-awg-proxy-1" routing-table="VPN" scope=30 target-scope=10/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /action=fasttrack-connection/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /connection-mark=no-mark/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /in-interface-list=!WAN/);
+{
+  const rsc = files["mikrotik/bfd-failover.rsc"];
+  const tableNames = new Set(["main"]);
+  for (const m of rsc.matchAll(/\/routing table add[^\n]*name="([^"]+)"/g)) tableNames.add(m[1]);
+  for (const m of rsc.matchAll(/new-routing-mark="([^"]+)"/g)) {
+    assert.equal(tableNames.has(m[1]), true, "Every RouterOS new-routing-mark must refer to an existing routing table: " + m[1]);
+  }
+}
 assert.match(files["INSTALL.txt"], /vpn-failover-firewall\.service/);
 assert.match(files["INSTALL.txt"], /wg-quick@wg-in/);
 assert.doesNotMatch(files["INSTALL.txt"], /^\s*iptables -t nat .*POSTROUTING -o eth0 -j MASQUERADE/m, "Install guide must not execute a duplicate broad NAT rule");
@@ -318,8 +327,8 @@ assert.equal(api.validate().ok, true, "Direct-route topology must validate");
 api.generateFiles();
 
 const directMikrotik = api.state.generated["mikrotik/bfd-failover.rsc"];
-assert.match(directMikrotik, /dst-address=203\.0\.113\.55\/32 .*routing-table=main comment="VPN_BFD_DIRECT"/);
-assert.match(directMikrotik, /dst-address=198\.51\.100\.0\/24 .*routing-table=main comment="VPN_BFD_DIRECT"/);
+assert.match(directMikrotik, /check-gateway=bfd comment="VPN_BFD_DIRECT" disabled=no distance=1 dst-address=203\.0\.113\.55\/32 .*routing-table=main scope=30 target-scope=10/);
+assert.match(directMikrotik, /check-gateway=bfd comment="VPN_BFD_DIRECT" disabled=no distance=1 dst-address=198\.51\.100\.0\/24 .*routing-table=main scope=30 target-scope=10/);
 assert.doesNotMatch(directMikrotik, /\/ip firewall mangle/);
 assert.doesNotMatch(directMikrotik, /mark-connection/);
 assert.doesNotMatch(directMikrotik, /VPN-BFD-Conntrack/);
