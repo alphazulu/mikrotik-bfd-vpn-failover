@@ -551,11 +551,11 @@ Address = ${s2Addr}
 ListenPort = ${port}
 PrivateKey = ${s2Private}${s2MtuLine}
 
-PostUp = iptables -C FORWARD -i %i -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i %i -j ACCEPT
-PostUp = iptables -C FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+PostUp = iptables -C FORWARD -i %i -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i %i -m comment --comment wg-exit-failover -j ACCEPT
+PostUp = iptables -C FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT
 PostUp = iptables -t nat -C POSTROUTING -s ${awgNet} -o ${s2Wan} -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s ${awgNet} -o ${s2Wan} -m comment --comment wg-exit-failover -j MASQUERADE${server2NatExtra}
-PostDown = iptables -D FORWARD -i %i -j ACCEPT 2>/dev/null || true
-PostDown = iptables -D FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D FORWARD -i %i -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || true
 PostDown = iptables -t nat -D POSTROUTING -s ${awgNet} -o ${s2Wan} -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || true
 
 [Peer]
