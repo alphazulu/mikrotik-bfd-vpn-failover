@@ -988,50 +988,68 @@ PublicKey = ${s1Public}${pskLine}
 AllowedIPs = ${allowedServer2.join(", ")}
 `;
 
-  files["server1/bird.conf"] =
-`router id ${s1Ip};
+  let birdTables = "";
+  let birdBfdExits = "";
+  let birdExitProtocols = "";
 
-ipv4 table exit4;
+  exits.forEach((exit) => {
+    const suffix = exits.length === 1 ? "" : "_" + (exit.rank + 1);
+    const tableName = "exit4" + suffix;
+    const staticName = "exit_default" + suffix;
+    const kernelName = "kernel_exit" + suffix;
 
-protocol device {
-}
-
-protocol bfd bfd_exit {
-    interface "wg-exit" {
+    birdTables += "ipv4 table " + tableName + ";\n";
+    birdBfdExits +=
+`    interface "${exit.s1Interface}" {
         interval ${bfd} ms;
         idle tx interval ${bfd} ms;
         multiplier ${mult};
     };
 
-    interface "${awgIf}" {
-        interval ${bfd} ms;
-        idle tx interval ${bfd} ms;
-        multiplier ${mult};
+    neighbor ${exit.s2Ip} dev "${exit.s1Interface}" local ${exit.s1Ip};
+
+`;
+
+    birdExitProtocols +=
+`protocol static ${staticName} {
+    ipv4 {
+        table ${tableName};
     };
 
-    neighbor ${s2Ip} dev "wg-exit" local ${s1Ip};
-    neighbor ${awgMt} dev "${awgIf}" local ${awgServer};
+    route 0.0.0.0/0 via ${exit.s2Ip} bfd;
 }
 
-protocol static exit_default {
-    ipv4 {
-        table exit4;
-    };
-
-    route 0.0.0.0/0 via ${s2Ip} bfd;
-}
-
-protocol kernel kernel_exit {
-    kernel table ${table};
+protocol kernel ${kernelName} {
+    kernel table ${exit.tableId};
 
     ipv4 {
-        table exit4;
+        table ${tableName};
         import none;
         export all;
     };
 }
-`;
 
+`;
+  });
+
+  files["server1/bird.conf"] =
+`router id ${s1Ip};
+
+${birdTables}
+protocol device {
+}
+
+protocol bfd bfd_exit {
+${birdBfdExits}    interface "${awgIf}" {
+        interval ${bfd} ms;
+        idle tx interval ${bfd} ms;
+        multiplier ${mult};
+    };
+
+    neighbor ${awgMt} dev "${awgIf}" local ${awgServer};
+}
+
+${birdExitProtocols}`;
   files["server2/bird.conf"] =
 `router id ${s2Ip};
 
