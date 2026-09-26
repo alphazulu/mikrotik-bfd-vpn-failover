@@ -1,0 +1,13 @@
+[Unit]
+Description=Monitor BIRD VPN exit route and flush VPN conntrack
+After=network-online.target bird.service
+Wants=network-online.target bird.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/vpn-exit-monitor.sh
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
