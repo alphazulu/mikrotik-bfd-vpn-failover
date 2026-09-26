@@ -1,0 +1,11 @@
+[Interface]
+Address = <WG_EXIT_S2_IP>/<WG_EXIT_PREFIX>
+ListenPort = <WG_EXIT_PORT>
+PrivateKey = <SERVER2_WG_EXIT_PRIVATE_KEY>
+
+PostUp = iptables -I FORWARD 1 -i %i -j ACCEPT
+PostDown = iptables -D FORWARD -i %i -j ACCEPT
+
+[Peer]
+PublicKey = <SERVER1_WG_EXIT_PUBLIC_KEY>
+AllowedIPs = <WG_EXIT_S1_IP>/32, <AWG_NET>, <WG_IN_NET>
