@@ -154,11 +154,29 @@ Two MikroTik routing models are supported.
 
 ### Address-list + mangle mode
 
-The failover route lives in a dedicated RouterOS routing table. The configurator ensures that the table exists, creates a BFD-monitored route inside it, generates `mark-connection` rules for the selected destination address lists, and uses a single `mark-routing` rule to send marked connections into that table while excluding the configured WAN interface list.
+The failover route lives in a dedicated RouterOS routing table. The configurator ensures that the table exists, creates a BFD-monitored route inside it, and generates `mark-connection` rules for the selected destination address lists.
+
+Mangle does **not** set `new-routing-mark` to the table name. In RouterOS 7 that mark is resolved before user routing rules, and an inactive route in that table does not fall back to `main` (RouterOS 6 did). Marked packets would be blackholed exactly when the MikroTik↔Server1 BFD session fails.
+
+Instead, mangle sets a distinct routing mark (`<table>_RM`). Two routing rules then implement active-backup:
+
+```routeros
+/routing rule
+add action=lookup routing-mark="<table>_RM" table=<table>
+add action=lookup routing-mark="<table>_RM" table=main
+```
+
+`action=lookup` uses the named table and, if no active route matches, continues to the next rule. While BFD is up, the first rule selects the VPN default. When that route is inactive, the second rule uses `main` and therefore the normal WAN default. Both rules match only the policy routing mark, so unmarked traffic is unchanged.
+
+Packets to the router itself are excluded with `dst-address-type=!local`, and traffic arriving on the WAN interface list is not marked.
+
+Fasttrack bypasses mangle after the first packet, which would drop the routing mark. The generated import limits existing catch-all fasttrack rules (`connection-mark` unset) to `connection-mark=no-mark`. Rules that already match a specific mark are not modified.
 
 The address-list contents themselves are not generated because they are deployment-specific policy data.
 
 Because connections are marked, the MikroTik failover script can selectively remove only those connections on route state changes.
+
+If the configured routing table is `main`, no extra routing rules are emitted: the BFD route and the normal default already share one table, so an inactive BFD route yields to the remaining default.
 
 ### Direct-route mode
 

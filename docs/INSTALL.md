@@ -249,7 +249,7 @@ add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF>
 
 Then choose one of the two generated MikroTik modes:
 
-- **Address-list + mangle:** use a dedicated routing table, mark selected connections, and use `check-gateway=bfd` on the monitored route. This mode supports selective `CM_VPN`-style conntrack cleanup.
+- **Address-list + mangle:** use a dedicated routing table and `check-gateway=bfd` on the monitored route. Mangle sets a routing mark that is **not** the table name (`<table>_RM`). Two routing rules with `action=lookup` try that table, then `main`, so an inactive BFD route falls back to the normal WAN default instead of blackholing. This mode supports selective `CM_VPN`-style conntrack cleanup. Import also sets `connection-mark=no-mark` on catch-all fasttrack rules so later packets still honor the policy. Do not rename the routing mark back to the table name.
 - **Direct routes:** add the required destination prefixes directly to `main`, each through the AWG gateway with `check-gateway=bfd`. No mangle or connection marks are generated.
 
 In direct-route mode, existing connections are not selectively flushed by the generated MikroTik script because no connection mark exists.

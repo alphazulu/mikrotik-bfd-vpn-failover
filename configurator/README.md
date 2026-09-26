@@ -40,7 +40,7 @@ The UI supports Russian and English from one implementation so both interfaces s
 
 The UI offers two mutually exclusive modes:
 
-- **Address-list + mangle** — generates connection/routing marks, a dedicated routing table, and selective conntrack cleanup.
+- **Address-list + mangle** — generates connection marks, a dedicated routing table, and selective conntrack cleanup. A distinct routing mark plus `action=lookup` falls through to `main` when the BFD route is inactive. Catch-all fasttrack rules are limited to unmarked connections.
 - **Direct routes** — generates BFD-monitored static routes in `main` for the supplied IPv4/CIDR destinations and does not generate mangle/connection marks.
 
 Direct-route mode deliberately omits selective MikroTik conntrack cleanup because there is no connection mark to target.

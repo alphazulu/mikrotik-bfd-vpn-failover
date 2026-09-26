@@ -1,5 +1,6 @@
-# RouterOS 7 sanitized example.
-# Review object names and route selection logic before importing.
+# RouterOS 7 sanitized example for address-list + mangle mode.
+# Review object names before importing. The dst-address-list must already exist.
+# <MT_ROUTE_TABLE> must not be "main".
 
 /ip address
 add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF> comment="AWG tunnel P2P address"
@@ -7,8 +8,29 @@ add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF> c
 /routing bfd configuration
 add interfaces=<MT_AWG_IF> addresses=<AWG_SERVER_IP>/32 min-rx=500ms min-tx=500ms multiplier=3
 
+:if ([:len [/routing table find where name="<MT_ROUTE_TABLE>"]] = 0) do={ /routing table add fib name="<MT_ROUTE_TABLE>" }
+
 /ip route
-add dst-address=0.0.0.0/0 gateway=<AWG_SERVER_IP>%<MT_AWG_IF> check-gateway=bfd distance=1 comment="VPN_BFD_PRIMARY"
+add dst-address=0.0.0.0/0 gateway=<AWG_SERVER_IP>%<MT_AWG_IF> check-gateway=bfd distance=1 routing-table="<MT_ROUTE_TABLE>" comment="VPN_BFD_PRIMARY"
+
+/ip firewall mangle
+add chain=prerouting action=mark-connection new-connection-mark="CM_VPN" passthrough=yes connection-state=new dst-address-type=!local dst-address-list="<DST_ADDRESS_LIST>" comment="VPN_POLICY_MARK"
+add chain=prerouting action=mark-routing new-routing-mark="<MT_ROUTE_TABLE>_RM" passthrough=yes connection-mark="CM_VPN" dst-address-type=!local in-interface-list=!<WAN_INTERFACE_LIST> comment="VPN_POLICY_ROUTE"
+
+# The routing-mark is intentionally not the table name. In RouterOS 7 a mark
+# equal to a table is resolved before user rules and does not fall through
+# when the only route in that table is inactive.
+/routing rule
+add action=lookup routing-mark="<MT_ROUTE_TABLE>_RM" table="<MT_ROUTE_TABLE>" comment="VPN_BFD_LOOKUP"
+add action=lookup routing-mark="<MT_ROUTE_TABLE>_RM" table=main comment="VPN_BFD_FALLBACK"
+
+# Fasttrack skips mangle. Limit catch-all fasttrack rules to unmarked connections.
+:foreach ftId in=[/ip firewall filter find where chain=forward action=fasttrack-connection] do={
+    :local cm [/ip firewall filter get $ftId connection-mark]
+    :if ([:len $cm] = 0) do={
+        /ip firewall filter set $ftId connection-mark=no-mark
+    }
+}
 
 /system script
 add name=VPN-BFD-Conntrack policy=read,write,test source={

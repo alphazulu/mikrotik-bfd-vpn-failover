@@ -17,6 +17,9 @@ Use placeholders in documentation and public repositories. Suggested mapping:
 | `<AWG_SERVER_IP>` | Server1 address inside AmneziaWG |
 | `<AWG_MIKROTIK_IP>` | MikroTik address inside AmneziaWG |
 | `<MT_AWG_IF>` | MikroTik AmneziaWG/WireGuard-compatible interface name |
+| `<MT_ROUTE_TABLE>` | Dedicated RouterOS routing table for policy mode, not `main` |
+| `<DST_ADDRESS_LIST>` | Existing RouterOS `dst-address-list` selected for the VPN path |
+| `<WAN_INTERFACE_LIST>` | RouterOS interface list of WAN ports, excluded from policy marking |
 | `<WG_EXIT_IF>` | Server1 WireGuard interface for one exit, e.g. `wg-exit`, `wg-exit2` |
 | `<WG_EXIT_NET>` | Inter-server WireGuard transfer subnet; unique per Server2 |
 | `<WG_EXIT_S1_IP>` | Server1 address on `wg-exit` |
