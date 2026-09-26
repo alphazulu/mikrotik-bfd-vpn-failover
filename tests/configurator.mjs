@@ -118,9 +118,28 @@ PublicKey = DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=
 AllowedIPs = 10.88.99.4/32
 `;
 
+element("paste-wgin").value = `[Interface]
+Address = 10.88.100.1/24
+ListenPort = 51999
+PrivateKey = ${keyA}
+
+PostUp = ip rule add priority 1001 iif %i lookup 200
+PreDown = ip rule del priority 1001 iif %i lookup 200
+
+PostUp = iptables -I FORWARD 1 -i %i -o %i -j DROP
+PostUp = iptables -I FORWARD 2 -i %i -j ACCEPT
+PreDown = iptables -D FORWARD -i %i -o %i -j DROP
+PreDown = iptables -D FORWARD -i %i -j ACCEPT
+
+[Peer]
+PublicKey = ${keyB}
+AllowedIPs = 10.88.100.2/32
+`;
+
 api.importConfig("s1", element("paste-s1").value);
 api.importConfig("s2", element("paste-s2").value);
 api.importConfig("in", element("paste-in").value);
+api.importConfig("wgin", element("paste-wgin").value);
 
 const values = {
   "wg-in-net": "10.88.100.0/24",
@@ -148,12 +167,18 @@ assert.equal(element("s1-mtu").value, "1380");
 assert.equal(element("s2-mtu").value, "1380");
 assert.equal(element("s1-psk").value, keyC);
 assert.equal(element("s2-psk").value, keyC);
+assert.equal(element("wg-in-address").value, "10.88.100.1/24");
+assert.equal(element("wg-in-net").value, "10.88.100.0/24");
+assert.equal(element("wg-in-port").value, "51999");
+assert.equal(element("wg-in-private").value, keyA);
+assert.equal(element("wg-in-peer-public").value, keyB);
+assert.equal(element("wg-in-peer-allowed").value, "10.88.100.2/32");
 
 assert.equal(api.validate().ok, true, "Reference topology must validate");
 api.generateFiles();
 
 const files = api.state.generated;
-assert.equal(Object.keys(files).length, 10, "Expected complete generated bundle");
+assert.equal(Object.keys(files).length, 11, "Expected complete generated bundle including wg-in");
 assert.match(files["server1/wg-exit.conf"], /Table = off/);
 assert.match(files["server1/wg-exit.conf"], /MTU = 1380/);
 assert.match(files["server1/wg-exit.conf"], new RegExp("PresharedKey = " + keyC.replace(/[.*+?^$()|[\]\\]/g, "\\$&")));
@@ -167,8 +192,14 @@ assert.match(files["server1/vpn-failover-firewall.service"], /-s 10.88.100.0\/24
 assert.match(files["server1/vpn-failover-firewall.service"], /-i awg0 -o awg0 .* -j DROP/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-i awg0 .* -j ACCEPT/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-o awg0 .*--ctstate RELATED,ESTABLISHED.* -j ACCEPT/);
-assert.match(files["server1/vpn-failover-firewall.service"], /-i wg-in -o wg-in .* -j DROP/);
-assert.match(files["server1/vpn-failover-firewall.service"], /-i wg-in .* -j ACCEPT/);
+assert.doesNotMatch(files["server1/vpn-failover-firewall.service"], /-i wg-in -o wg-in .* -j DROP/, "wg-in owns its own forwarding lifecycle when a full wg-in config is generated");
+assert.match(files["server1/wg-in.conf"], /Address = 10\.88\.100\.1\/24/);
+assert.match(files["server1/wg-in.conf"], /ListenPort = 51999/);
+assert.match(files["server1/wg-in.conf"], /priority 1001 iif %i lookup 200/);
+assert.match(files["server1/wg-in.conf"], /-i %i -o %i .* -j DROP/);
+assert.match(files["server1/wg-in.conf"], /-i %i .* -j ACCEPT/);
+assert.match(files["server1/wg-in.conf"], /-o %i .*--ctstate RELATED,ESTABLISHED.* -j ACCEPT/);
+assert.match(files["server1/wg-in.conf"], /AllowedIPs = 10\.88\.100\.2\/32/);
 
 assert.match(files["server2/wg-exit.conf"], /AllowedIPs = 10.77.66.1\/32, 10.88.99.0\/24, 10.88.100.0\/24/);
 assert.match(files["server2/wg-exit.conf"], /-o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT/);
@@ -188,6 +219,7 @@ assert.match(files["mikrotik/bfd-failover.rsc"], /dst-address-list="policy-list-
 assert.match(files["mikrotik/bfd-failover.rsc"], /new-routing-mark="VPN"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /in-interface-list=!WAN/);
 assert.match(files["INSTALL.txt"], /vpn-failover-firewall\.service/);
+assert.match(files["INSTALL.txt"], /wg-quick@wg-in/);
 assert.doesNotMatch(files["INSTALL.txt"], /^\s*iptables -t nat .*POSTROUTING -o eth0 -j MASQUERADE/m, "Install guide must not execute a duplicate broad NAT rule");
 
 const validS2 = element("s2-address").value;
@@ -214,6 +246,7 @@ fs.writeFileSync(path.join(out, "server1-bird.conf"), files["server1/bird.conf"]
 fs.writeFileSync(path.join(out, "server2-bird.conf"), files["server2/bird.conf"]);
 fs.writeFileSync(path.join(out, "server1-wg-exit.conf"), files["server1/wg-exit.conf"]);
 fs.writeFileSync(path.join(out, "server2-wg-exit.conf"), files["server2/wg-exit.conf"]);
+fs.writeFileSync(path.join(out, "server1-wg-in.conf"), files["server1/wg-in.conf"]);
 fs.writeFileSync(path.join(out, "vpn-exit-monitor.sh"), files["server1/vpn-exit-monitor.sh"]);
 
 console.log("Configurator unit/security tests: OK");
