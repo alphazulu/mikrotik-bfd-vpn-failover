@@ -273,6 +273,14 @@ assert.match(multi["server1/vpn-exit-monitor.sh"], /TABLES=\(200 201\)/);
 assert.match(multi["INSTALL.txt"], /server2-2\/wg-exit\.conf/);
 assert.match(multi["INSTALL.txt"], /wg-quick@wg-exit2/);
 
+const multiValidationFiles = {
+  server1Bird: multi["server1/bird.conf"],
+  server2Bird: multi["server2-2/bird.conf"],
+  server1Wg: multi["server1/wg-exit2.conf"],
+  server2Wg: multi["server2-2/wg-exit.conf"],
+  monitor: multi["server1/vpn-exit-monitor.sh"]
+};
+
 // Lower numeric priority must become the first Linux policy table.
 api.state.extraExits[0].priority = "5";
 assert.equal(api.validate().ok, true, "Reordered priorities must validate");
@@ -345,5 +353,10 @@ fs.writeFileSync(path.join(out, "server1-wg-exit.conf"), files["server1/wg-exit.
 fs.writeFileSync(path.join(out, "server2-wg-exit.conf"), files["server2/wg-exit.conf"]);
 fs.writeFileSync(path.join(out, "server1-wg-in.conf"), files["server1/wg-in.conf"]);
 fs.writeFileSync(path.join(out, "vpn-exit-monitor.sh"), files["server1/vpn-exit-monitor.sh"]);
+fs.writeFileSync(path.join(out, "multi-server1-bird.conf"), multiValidationFiles.server1Bird);
+fs.writeFileSync(path.join(out, "multi-server2-bird.conf"), multiValidationFiles.server2Bird);
+fs.writeFileSync(path.join(out, "multi-server1-wg-exit2.conf"), multiValidationFiles.server1Wg);
+fs.writeFileSync(path.join(out, "multi-server2-wg-exit.conf"), multiValidationFiles.server2Wg);
+fs.writeFileSync(path.join(out, "multi-vpn-exit-monitor.sh"), multiValidationFiles.monitor);
 
 console.log("Configurator unit/security tests: OK");
