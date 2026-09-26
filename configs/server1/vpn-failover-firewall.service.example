@@ -1,15 +1,27 @@
 [Unit]
-Description=Persistent fallback NAT for VPN client traffic
+Description=Persistent forwarding and fallback NAT for VPN client traffic
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c '/usr/sbin/iptables -t nat -C POSTROUTING -s <AWG_NET> -o <SERVER1_WAN_IF> -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || /usr/sbin/iptables -t nat -A POSTROUTING -s <AWG_NET> -o <SERVER1_WAN_IF> -m comment --comment vpn-failover-fallback -j MASQUERADE'
-ExecStop=/bin/sh -c '/usr/sbin/iptables -t nat -D POSTROUTING -s <AWG_NET> -o <SERVER1_WAN_IF> -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || true'
 
-# If <WG_IN_NET> is used, add matching ExecStart/ExecStop rules for that subnet.
+# Primary incoming VPN interface on Server1.
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i <AWG_IF> -o <AWG_IF> -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || /usr/sbin/iptables -I FORWARD 1 -i <AWG_IF> -o <AWG_IF> -m comment --comment vpn-failover-forward -j DROP'
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i <AWG_IF> -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 2 -i <AWG_IF> -m comment --comment vpn-failover-forward -j ACCEPT'
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -o <AWG_IF> -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 3 -o <AWG_IF> -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT'
+
+# Fallback NAT through Server1 WAN.
+ExecStart=/bin/sh -c '/usr/sbin/iptables -t nat -C POSTROUTING -s <AWG_NET> -o <SERVER1_WAN_IF> -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || /usr/sbin/iptables -t nat -A POSTROUTING -s <AWG_NET> -o <SERVER1_WAN_IF> -m comment --comment vpn-failover-fallback -j MASQUERADE'
+
+# If <WG_IN_NET> is used, add matching FORWARD and POSTROUTING rules for <WG_IN_IF>.
+# The browser configurator generates those optional rules automatically.
+
+ExecStop=/bin/sh -c '/usr/sbin/iptables -t nat -D POSTROUTING -s <AWG_NET> -o <SERVER1_WAN_IF> -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || true'
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -o <AWG_IF> -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i <AWG_IF> -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i <AWG_IF> -o <AWG_IF> -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || true'
 
 [Install]
 WantedBy=multi-user.target
