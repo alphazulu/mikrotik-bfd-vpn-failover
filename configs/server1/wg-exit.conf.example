@@ -1,0 +1,10 @@
+[Interface]
+Address = <WG_EXIT_S1_IP>/<WG_EXIT_PREFIX>
+PrivateKey = <SERVER1_WG_EXIT_PRIVATE_KEY>
+Table = off
+
+[Peer]
+PublicKey = <SERVER2_WG_EXIT_PUBLIC_KEY>
+Endpoint = <SERVER2_PUBLIC_IP>:<WG_EXIT_PORT>
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
