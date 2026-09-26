@@ -39,6 +39,41 @@ On every **UP → DOWN** and **DOWN → UP** transition, only VPN-client conntra
 - cleanup only for connections marked `CM_VPN` when route state changes;
 - persistence across Server1/Server2 reboots.
 
+## Online configurator
+
+The project now includes a local browser-based configurator:
+
+**https://alphazulu.github.io/mikrotik-bfd-vpn-failover/**
+
+It can:
+
+- import WireGuard/AmneziaWG configurations for Server1 and Server2;
+- optionally import the incoming AWG/WG Server1 configuration;
+- extract internal tunnel IPs, endpoint, UDP port and WireGuard keys;
+- validate that Server1 and Server2 are in the same wg-exit subnet;
+- validate client subnet and BFD parameters;
+- generate ready-to-use Server1, Server2 and MikroTik configurations;
+- generate BIRD/BFD, Linux policy routing, systemd units and event-driven conntrack cleanup;
+- generate MikroTik `check-gateway=bfd` and selective `CM_VPN` cleanup;
+- download individual files or the complete generated set as a `.tar`.
+
+### Configurator privacy
+
+The configurator is fully static and has no backend.
+
+- no analytics;
+- no external JavaScript/CSS/CDN resources;
+- no cookies;
+- no `localStorage`, `sessionStorage`, `IndexedDB` or Service Worker;
+- imported configurations are read through the File API and remain only in the current tab's memory;
+- the page CSP contains `connect-src 'none'`, so application JavaScript cannot transmit data over the network;
+- imported private keys are masked in previews by default;
+- “Clear all data from this tab” removes imported values from the page state.
+
+Opening the GitHub Pages site itself naturally downloads the static HTML/CSS/JS files from GitHub Pages, but imported configurations and keys are never transmitted by the application.
+
+The configurator source is in [configurator/](configurator/).
+
 ## How it works
 
 ### 1. MikroTik sends selected traffic to Server1
@@ -196,10 +231,14 @@ A separate Netwatch or ping watchdog is not required for this design.
 │   ├── OPERATIONS.md
 │   ├── SECURITY.md
 │   └── VARIABLES.md
-└── configs/
-    ├── mikrotik/
-    ├── server1/
-    └── server2/
+├── configs/
+│   ├── mikrotik/
+│   ├── server1/
+│   └── server2/
+└── configurator/
+    ├── index.html
+    ├── app.js
+    └── style.css
 ```
 
 ## Documentation
@@ -250,7 +289,8 @@ A feature is considered documented only when:
 
 1. it is described in the Russian README;
 2. it is described in the English README;
-3. related files under `docs/` and `configs/` are updated when necessary.
+3. related files under `docs/` and `configs/` are updated when necessary;
+4. if the change affects generated topology/configuration, `configurator/` is updated in the same change.
 
 ## Security
 
