@@ -120,3 +120,14 @@ Handled on Server1 by BFD/BIRD and policy routing.
 Handled on MikroTik by its own BFD session and `check-gateway=bfd` route monitoring.
 
 The two mechanisms are independent.
+
+
+## 7. MikroTik policy routing
+
+The failover route may live in a dedicated RouterOS routing table rather than `main`.
+
+When a custom table is selected, the configurator first ensures that the table exists under `/routing table`, then creates the BFD-monitored default route inside it.
+
+Optionally, one or more existing destination address lists can be supplied. For each list the configurator generates a `mark-connection` rule that assigns the configured connection mark (for example `CM_VPN`). A single `mark-routing` rule then sends those marked connections into the selected routing table while excluding traffic arriving from the configured WAN interface list.
+
+The address-list contents themselves are not generated, because they are deployment-specific policy data rather than part of the failover transport topology.
