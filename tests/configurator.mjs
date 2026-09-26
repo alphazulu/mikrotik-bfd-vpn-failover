@@ -157,6 +157,8 @@ assert.match(files["server1/wg-exit.conf"], /MTU = 1380/);
 assert.match(files["server1/wg-exit.conf"], new RegExp("PresharedKey = " + keyC.replace(/[.*+?^$()|[\]\\]/g, "\\$&")));
 assert.match(files["server1/bird.conf"], /kernel table 200;/);
 assert.match(files["server1/bird.conf"], /neighbor 10\.10\.12\.2 dev "wg-exit" local 10\.10\.12\.1;/);
+assert.match(files["server1/bird.conf"], /route 0\.0\.0\.0\/0 via 10\.10\.12\.2 bfd;/);
+assert.doesNotMatch(files["server1/bird.conf"], /route 0\.0\.0\.0\/0 via 10\.10\.12\.2 dev /, "BIRD 2.14 static route must not use dev after an IPv4 nexthop");
 assert.match(files["server1/vpn-exit-monitor.sh"], /Deleted default via 10\.10\.12\.2 dev wg-exit table 200 proto bird/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-s 10\.3\.2\.0\/24 -o eth0/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-s 10\.3\.3\.0\/24 -o eth0/);
@@ -169,6 +171,8 @@ assert.match(files["server2/wg-exit.conf"], /-s 10\.3\.3\.0\/24 -o eth0/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /address=10\.3\.2\.4\/32 network=10\.3\.2\.1/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /check-gateway=bfd/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /connection-mark="CM_VPN"/);
+assert.match(files["INSTALL.txt"], /vpn-failover-firewall\.service/);
+assert.doesNotMatch(files["INSTALL.txt"], /POSTROUTING -o eth0 -j MASQUERADE/, "Install guide must not add a duplicate broad NAT rule");
 
 const validS2 = element("s2-address").value;
 element("s2-address").value = "10.10.13.2/30";
