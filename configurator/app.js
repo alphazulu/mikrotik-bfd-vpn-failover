@@ -677,7 +677,7 @@ function validate() {
     if (!wgInNet) add("bad", "Для wg-in требуется WG client subnet", "WG client subnet is required for wg-in");
   }
 
-  ["s1-wan", "s2-wan", "awg-if"].forEach((id) => {
+  ["s1-wan", "s2-wan", "awg-if", "s1-exit-if"].forEach((id) => {
     if (validLinuxInterface(value(id))) add("good", id + " задан", id + " is set");
     else add("bad", id + " должен быть корректным Linux interface name (до 15 символов)", id + " must be a valid Linux interface name (up to 15 characters)");
   });
@@ -727,9 +727,38 @@ function validate() {
     add("warn", "В режиме прямых маршрутов mangle, connection-mark и selective conntrack cleanup на MikroTik не создаются", "Direct-route mode does not generate mangle, connection marks, or selective MikroTik conntrack cleanup");
   }
 
+  const exits = getExitConfigs();
+  const primaryPriority = Number(value("s2-priority"));
+  if (!Number.isInteger(primaryPriority) || primaryPriority < 1) {
+    add("bad", "Приоритет основного Server2 должен быть положительным целым", "Primary Server2 priority must be a positive integer");
+  }
+
+  state.extraExits.forEach((exit) => validateExit(Object.assign({}, exit, { priority: Number(exit.priority) }), add));
+
+  const priorities = exits.map((exit) => exit.priority);
+  if (priorities.some((p) => !Number.isInteger(p) || p < 1)) {
+    add("bad", "Все приоритеты Server2 должны быть положительными целыми", "All Server2 priorities must be positive integers");
+  } else if (new Set(priorities).size !== priorities.length) {
+    add("bad", "Приоритеты Server2 должны быть уникальными", "Server2 priorities must be unique");
+  } else if (exits.length > 1) {
+    add("good", "Настроено выходных Server2: " + exits.length, "Configured Server2 exits: " + exits.length);
+  }
+
+  const exitInterfaces = exits.map((exit) => exit.s1Interface);
+  if (new Set(exitInterfaces).size !== exitInterfaces.length) {
+    add("bad", "Интерфейсы Server1 для разных Server2 должны иметь уникальные имена", "Server1 interfaces for different Server2 exits must be unique");
+  }
+
+  const exitNetworks = exits.map((exit) => networkFromCidr(exit.s1Address)).filter(Boolean);
+  if (new Set(exitNetworks).size !== exitNetworks.length) {
+    add("bad", "Каждый wg-exit должен использовать отдельную transfer subnet", "Each wg-exit must use a distinct transfer subnet");
+  }
+
   const table = Number(value("route-table"));
-  if (Number.isInteger(table) && table > 0) add("good", "Linux routing table корректна", "Linux routing table is valid");
-  else add("bad", "Linux routing table должна быть положительным числом", "Linux routing table must be a positive integer");
+  if (Number.isInteger(table) && table > 0) {
+    add("good", "Linux routing table корректна", "Linux routing table is valid");
+    if (table + exits.length - 1 > 2147483647) add("bad", "Диапазон Linux routing tables выходит за допустимые значения", "Linux routing-table range is too large");
+  } else add("bad", "Linux routing table должна быть положительным числом", "Linux routing table must be a positive integer");
 
   const s1Mtu = value("s1-mtu");
   const s2Mtu = value("s2-mtu");
