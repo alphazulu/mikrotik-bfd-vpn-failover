@@ -1,0 +1,16 @@
+# BIRD 2.x example for Server2.
+
+router id <WG_EXIT_S2_IP>;
+
+protocol device {
+}
+
+protocol bfd bfd_exit {
+    interface "wg-exit" {
+        interval 500 ms;
+        idle tx interval 500 ms;
+        multiplier 3;
+    };
+
+    neighbor <WG_EXIT_S1_IP> dev "wg-exit" local <WG_EXIT_S2_IP>;
+}
