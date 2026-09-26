@@ -1,0 +1,88 @@
+# BIRD 2.x multi-exit example for Server1.
+# Replace placeholders. Every Server2 uses its own WireGuard interface,
+# transfer subnet, BIRD table and Linux kernel routing table.
+
+router id <WG_EXIT_S1_IP_1>;
+
+ipv4 table exit4_1;
+ipv4 table exit4_2;
+ipv4 table exit4_3;
+
+protocol device {
+}
+
+protocol bfd bfd_exit {
+    interface "<WG_EXIT_IF_1>" {
+        interval 500 ms;
+        idle tx interval 500 ms;
+        multiplier 3;
+    };
+
+    neighbor <WG_EXIT_S2_IP_1> dev "<WG_EXIT_IF_1>" local <WG_EXIT_S1_IP_1>;
+
+    interface "<WG_EXIT_IF_2>" {
+        interval 500 ms;
+        idle tx interval 500 ms;
+        multiplier 3;
+    };
+
+    neighbor <WG_EXIT_S2_IP_2> dev "<WG_EXIT_IF_2>" local <WG_EXIT_S1_IP_2>;
+
+    interface "<WG_EXIT_IF_3>" {
+        interval 500 ms;
+        idle tx interval 500 ms;
+        multiplier 3;
+    };
+
+    neighbor <WG_EXIT_S2_IP_3> dev "<WG_EXIT_IF_3>" local <WG_EXIT_S1_IP_3>;
+
+    interface "<AWG_IF>" {
+        interval 500 ms;
+        idle tx interval 500 ms;
+        multiplier 3;
+    };
+
+    neighbor <AWG_MIKROTIK_IP> dev "<AWG_IF>" local <AWG_SERVER_IP>;
+}
+
+protocol static exit_default_1 {
+    ipv4 { table exit4_1; };
+    route 0.0.0.0/0 via <WG_EXIT_S2_IP_1> bfd;
+}
+
+protocol kernel kernel_exit_1 {
+    kernel table <LINUX_POLICY_TABLE_BASE>;
+    ipv4 {
+        table exit4_1;
+        import none;
+        export all;
+    };
+}
+
+protocol static exit_default_2 {
+    ipv4 { table exit4_2; };
+    route 0.0.0.0/0 via <WG_EXIT_S2_IP_2> bfd;
+}
+
+protocol kernel kernel_exit_2 {
+    kernel table <LINUX_POLICY_TABLE_BASE_PLUS_1>;
+    ipv4 {
+        table exit4_2;
+        import none;
+        export all;
+    };
+}
+
+protocol static exit_default_3 {
+    ipv4 { table exit4_3; };
+    route 0.0.0.0/0 via <WG_EXIT_S2_IP_3> bfd;
+}
+
+protocol kernel kernel_exit_3 {
+    kernel table <LINUX_POLICY_TABLE_BASE_PLUS_2>;
+    ipv4 {
+        table exit4_3;
+        import none;
+        export all;
+    };
+}
