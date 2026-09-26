@@ -729,8 +729,10 @@ SERVER2
    server2/wg-exit.conf -> /etc/wireguard/wg-exit.conf
    server2/bird.conf    -> /etc/bird/bird.conf
 
-4. NAT:
-   iptables -t nat -C POSTROUTING -o ${s2Wan} -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o ${s2Wan} -j MASQUERADE
+4. NAT и FORWARD:
+   Нужные source-specific MASQUERADE и FORWARD rules уже находятся
+   в server2/wg-exit.conf как PostUp/PostDown. Отдельно добавлять
+   широкий POSTROUTING -o ${s2Wan} -j MASQUERADE не требуется.
 
 5. Запустить:
    systemctl enable --now wg-quick@wg-exit
@@ -811,8 +813,10 @@ SERVER2
    server2/wg-exit.conf -> /etc/wireguard/wg-exit.conf
    server2/bird.conf    -> /etc/bird/bird.conf
 
-4. NAT:
-   iptables -t nat -C POSTROUTING -o ${s2Wan} -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o ${s2Wan} -j MASQUERADE
+4. NAT and FORWARD:
+   The required source-specific MASQUERADE and FORWARD rules are already
+   included in server2/wg-exit.conf as PostUp/PostDown commands. Do not
+   add a second broad POSTROUTING -o ${s2Wan} -j MASQUERADE rule.
 
 5. Start:
    systemctl enable --now wg-quick@wg-exit
