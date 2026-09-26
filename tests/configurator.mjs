@@ -9,6 +9,7 @@ const html = fs.readFileSync(path.join(root, "configurator", "index.html"), "utf
 new Function("document", "Node", "navigator", "location", "URL", "Blob", "TextEncoder", src);
 
 assert.match(html, /connect-src 'none'/, "CSP must block application network connections");
+assert.match(html, /id="mt-route-table"[^>]*value="VPN"/, "Policy-routing UI must default to a dedicated VPN table");
 assert.doesNotMatch(src, /\bfetch\s*\(/, "Runtime must not call fetch()");
 assert.doesNotMatch(src, /new\s+XMLHttpRequest|XMLHttpRequest\s*\(/, "Runtime must not use XMLHttpRequest");
 assert.doesNotMatch(src, /new\s+WebSocket|WebSocket\s*\(/, "Runtime must not use WebSocket");
@@ -319,6 +320,13 @@ api.state.extraExits[0].s2Address = "10.77.67.2/30";
 api.state.extraExits = [];
 assert.equal(api.validate().ok, true, "Single-exit topology must remain valid after multi-exit tests");
 api.generateFiles();
+
+// Address-list + mangle must not place the BFD default in main, because that
+// would affect unmarked traffic too. Direct mode is the supported main-table mode.
+element("mt-route-table").value = "main";
+assert.equal(api.validate().ok, false, "Policy mode must reject main as its routing table");
+element("mt-route-table").value = "VPN";
+assert.equal(api.validate().ok, true, "Policy mode must accept the dedicated VPN table");
 
 // Alternative MikroTik mode: direct destination routes in main, without mangle/marks.
 element("mt-policy-mode").value = "direct";
