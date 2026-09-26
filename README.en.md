@@ -53,7 +53,7 @@ It can:
 - validate that Server1 and Server2 are in the same wg-exit subnet;
 - validate client subnet and BFD parameters;
 - generate ready-to-use Server1, Server2 and MikroTik configurations;
-- generate BIRD/BFD, Linux policy routing, systemd units, persistent fallback NAT and event-driven conntrack cleanup;
+- generate BIRD/BFD, Linux policy routing, systemd units, persistent Server1 FORWARD/fallback NAT and event-driven conntrack cleanup;
 - generate MikroTik `check-gateway=bfd` and selective `CM_VPN` cleanup;
 - download individual files or the complete generated set as a `.tar`;
 - keep source-specific Server2 NAT/forwarding in `wg-exit.conf` and Server1 fallback NAT in a dedicated systemd unit.
