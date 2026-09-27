@@ -31,9 +31,19 @@
     </section>
 
     <section class="card">
-      <h2 data-ru="1. Импорт WireGuard / AmneziaWG конфигураций" data-en="1. Import WireGuard / AmneziaWG configurations">1. Импорт WireGuard / AmneziaWG конфигураций</h2>
-      <p class="hint" data-ru="Поддерживаются обычные INI-поля WireGuard. Неизвестные AmneziaWG-параметры безопасно игнорируются. Версия 1 генерирует IPv4-схему." data-en="Standard WireGuard INI fields are supported. Unknown AmneziaWG parameters are safely ignored. Version 1 generates an IPv4 design.">Поддерживаются обычные INI-поля WireGuard. Неизвестные AmneziaWG-параметры безопасно игнорируются. Версия 1 генерирует IPv4-схему.</p>
+      <h2 data-ru="1. Источник WireGuard / AmneziaWG конфигураций" data-en="1. WireGuard / AmneziaWG configuration source">1. Источник WireGuard / AmneziaWG конфигураций</h2>
+      <p class="hint" data-ru="Можно импортировать существующие .conf либо создать новые ключи и конфиги полностью локально в браузере." data-en="Import existing .conf files or create new keys and configs entirely locally in the browser.">Можно импортировать существующие .conf либо создать новые ключи и конфиги полностью локально в браузере.</p>
 
+      <div class="grid form-grid">
+        <label data-ru="Режим" data-en="Mode">Режим
+          <select id="config-source-mode">
+            <option value="import" data-ru="Импортировать готовые конфиги" data-en="Import existing configs">Импортировать готовые конфиги</option>
+            <option value="generate" data-ru="Сгенерировать новые AWG/WG конфиги" data-en="Generate new AWG/WG configs">Сгенерировать новые AWG/WG конфиги</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="import-configs">
       <div class="grid three">
         <div class="import-box">
           <h3>Server1 — wg-exit</h3>
@@ -65,6 +75,52 @@
           <textarea id="paste-wgin" rows="8" spellcheck="false" data-placeholder-ru="импорт /etc/wireguard/wg-in.conf" data-placeholder-en="import /etc/wireguard/wg-in.conf" placeholder="импорт /etc/wireguard/wg-in.conf"></textarea>
           <button id="parse-wgin" type="button" data-ru="Разобрать wg-in" data-en="Parse wg-in">Разобрать wg-in</button>
           <div id="status-wgin" class="status neutral">—</div>
+        </div>
+      </div>
+      </div>
+
+      <div id="generate-configs" class="hidden">
+        <div class="import-box generator-box">
+          <h3 data-ru="Локальная генерация ключей и конфигов" data-en="Local key and config generation">Локальная генерация ключей и конфигов</h3>
+          <p class="hint" data-ru="Ключи создаются через crypto.getRandomValues() в этой вкладке. Никакие ключи или конфиги не отправляются в сеть." data-en="Keys are created with crypto.getRandomValues() in this tab. No keys or configs are sent over the network.">Ключи создаются через crypto.getRandomValues() в этой вкладке. Никакие ключи или конфиги не отправляются в сеть.</p>
+
+          <div class="grid form-grid">
+            <label data-ru="Публичный endpoint Server1" data-en="Server1 public endpoint">Публичный endpoint Server1
+              <input id="s1-public-endpoint" type="text" placeholder="vpn1.example.net">
+            </label>
+            <label data-ru="Профиль AmneziaWG" data-en="AmneziaWG profile">Профиль AmneziaWG
+              <select id="awg-profile">
+                <option value="legacy" data-ru="AWG legacy / 1.x (S1/S2)" data-en="AWG legacy / 1.x (S1/S2)">AWG legacy / 1.x (S1/S2)</option>
+                <option value="awg2" data-ru="AWG 2.x (S1-S4)" data-en="AWG 2.x (S1-S4)">AWG 2.x (S1-S4)</option>
+              </select>
+            </label>
+            <label>AWG MTU<input id="awg-mtu" type="number" min="576" max="65535" value="1280"></label>
+          </div>
+
+          <label class="check"><input id="generate-psk" type="checkbox" checked><span data-ru="Генерировать PresharedKey для новых туннелей" data-en="Generate PresharedKey for new tunnels">Генерировать PresharedKey для новых туннелей</span></label>
+          <label class="check"><input id="generate-wgin" type="checkbox"><span data-ru="Также создать дополнительную входящую пару wg-in" data-en="Also create an additional incoming wg-in pair">Также создать дополнительную входящую пару wg-in</span></label>
+
+          <div class="actions">
+            <button id="generate-vpn-material" type="button" data-ru="Сгенерировать ключи и заполнить параметры" data-en="Generate keys and populate parameters">Сгенерировать ключи и заполнить параметры</button>
+          </div>
+          <div id="status-generated" class="status neutral">—</div>
+
+          <details>
+            <summary data-ru="Параметры маскировки AWG" data-en="AWG obfuscation parameters">Параметры маскировки AWG</summary>
+            <div class="grid form-grid">
+              <label>Jc<input id="awg-jc" type="number"></label>
+              <label>Jmin<input id="awg-jmin" type="number"></label>
+              <label>Jmax<input id="awg-jmax" type="number"></label>
+              <label>S1<input id="awg-s1" type="number"></label>
+              <label>S2<input id="awg-s2" type="number"></label>
+              <label>S3 <span class="optional">(AWG 2.x)</span><input id="awg-s3" type="number"></label>
+              <label>S4 <span class="optional">(AWG 2.x)</span><input id="awg-s4" type="number"></label>
+              <label>H1<input id="awg-h1" type="number"></label>
+              <label>H2<input id="awg-h2" type="number"></label>
+              <label>H3<input id="awg-h3" type="number"></label>
+              <label>H4<input id="awg-h4" type="number"></label>
+            </div>
+          </details>
         </div>
       </div>
     </section>
@@ -104,7 +160,14 @@
           <label>Server2 PublicKey<input id="s2-public" type="password" autocomplete="off"></label>
           <label>Server1 Peer PresharedKey <span class="optional">(optional)</span><input id="s1-psk" type="password" autocomplete="off"></label>
           <label>Server2 Peer PresharedKey <span class="optional">(optional)</span><input id="s2-psk" type="password" autocomplete="off"></label>
+          <label>AWG Server1 PrivateKey <span class="optional">(generated)</span><input id="awg-private" type="password" autocomplete="off"></label>
+          <label>AWG Server1 PublicKey <span class="optional">(generated)</span><input id="awg-public" type="password" autocomplete="off"></label>
+          <label>AWG Peer PrivateKey <span class="optional">(generated)</span><input id="awg-peer-private" type="password" autocomplete="off"></label>
+          <label>AWG Peer PublicKey <span class="optional">(generated/imported)</span><input id="awg-peer-public" type="password" autocomplete="off"></label>
+          <label>AWG PresharedKey <span class="optional">(optional)</span><input id="awg-psk" type="password" autocomplete="off"></label>
           <label>wg-in Server1 PrivateKey <span class="optional">(optional)</span><input id="wg-in-private" type="password" autocomplete="off"></label>
+          <label>wg-in Server1 PublicKey <span class="optional">(generated)</span><input id="wg-in-public" type="password" autocomplete="off"></label>
+          <label>wg-in Peer PrivateKey <span class="optional">(generated)</span><input id="wg-in-peer-private" type="password" autocomplete="off"></label>
           <label>wg-in Peer PublicKey <span class="optional">(optional)</span><input id="wg-in-peer-public" type="password" autocomplete="off"></label>
           <label>wg-in PresharedKey <span class="optional">(optional)</span><input id="wg-in-psk" type="password" autocomplete="off"></label>
         </div>
