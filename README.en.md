@@ -29,7 +29,7 @@ On every **UP → DOWN** and **DOWN → UP** transition, only VPN-client conntra
 - optional additional incoming WireGuard interface;
 - one or more independent inter-server WireGuard exits (`wg-exit`, `wg-exit2`, ...);
 - independent BFD between Server1 and every Server2;
-- generated firewall INPUT rules for single-hop BFD UDP/3784 on Server1, every Server2, and MikroTik;
+- explicit firewall INPUT rules for all server-side VPN listener ports (Server1 AWG, optional wg-in, every Server2 wg-exit) and single-hop BFD UDP/3784;
 - BIRD 2.x for automatic default-route installation/removal;
 - ordered Linux policy routing through tables `200`, `201`, `202`, ... based on Server2 priority;
 - automatic failover Server2 → next Server2 → Server1 WAN;
