@@ -90,8 +90,9 @@
             </label>
             <label data-ru="Профиль AmneziaWG" data-en="AmneziaWG profile">Профиль AmneziaWG
               <select id="awg-profile">
-                <option value="legacy" data-ru="AWG legacy / 1.x (S1/S2)" data-en="AWG legacy / 1.x (S1/S2)">AWG legacy / 1.x (S1/S2)</option>
-                <option value="awg2" data-ru="AWG 2.x (S1-S4)" data-en="AWG 2.x (S1-S4)">AWG 2.x (S1-S4)</option>
+                <option value="awg2" data-ru="AWG 2.0 (S1-S4)" data-en="AWG 2.0 (S1-S4)">AWG 2.0 (S1-S4)</option>
+                <option value="awg3" data-ru="AWG 3.0 (Header Protection + timing/padding)" data-en="AWG 3.0 (Header Protection + timing/padding)">AWG 3.0 (Header Protection + timing/padding)</option>
+                <option value="awg31" selected data-ru="AWG 3.1 — рекомендовано" data-en="AWG 3.1 — recommended">AWG 3.1 — рекомендовано</option>
               </select>
             </label>
             <label>AWG MTU<input id="awg-mtu" type="number" min="576" max="65535" value="1280"></label>
@@ -119,6 +120,41 @@
               <label>H2<input id="awg-h2" type="number"></label>
               <label>H3<input id="awg-h3" type="number"></label>
               <label>H4<input id="awg-h4" type="number"></label>
+            </div>
+
+            <h4 data-ru="AWG 3.0 / 3.1" data-en="AWG 3.0 / 3.1">AWG 3.0 / 3.1</h4>
+            <div class="grid form-grid">
+              <label>HeaderProtectionKey<input id="awg-header-protection-key" type="password" autocomplete="off"></label>
+              <label>ContentPaddingAddition<input id="awg-content-padding" type="text" placeholder="10-100"></label>
+              <label>RekeyAfterTime<input id="awg-rekey-after" type="text" placeholder="100-120"></label>
+              <label>RekeyTimeout<input id="awg-rekey-timeout" type="text" placeholder="3-7"></label>
+              <label>RejectAfterTime<input id="awg-reject-after" type="text" placeholder="150-180"></label>
+              <label>KeepaliveTimeout<input id="awg-keepalive-timeout" type="text" placeholder="5-15"></label>
+              <label>MaxHandshakeAttempts<input id="awg-max-handshake-attempts" type="text" placeholder="15-20"></label>
+              <label>RandomTrailers
+                <select id="awg-random-trailers">
+                  <option value="">—</option>
+                  <option value="on">on</option>
+                  <option value="off">off</option>
+                </select>
+              </label>
+              <label>DisableCookies
+                <select id="awg-disable-cookies">
+                  <option value="">—</option>
+                  <option value="on">on</option>
+                  <option value="off">off</option>
+                </select>
+              </label>
+            </div>
+
+            <h4 data-ru="CPS / I1-I5 (опционально)" data-en="CPS / I1-I5 (optional)">CPS / I1-I5 (опционально)</h4>
+            <p class="hint" data-ru="I1-I5 можно оставить пустыми. Для 3.x генератор не подставляет общий статический DPI-шаблон автоматически." data-en="I1-I5 may be left empty. For 3.x the generator does not inject one shared static DPI signature automatically.">I1-I5 можно оставить пустыми. Для 3.x генератор не подставляет общий статический DPI-шаблон автоматически.</p>
+            <div class="grid two">
+              <label>I1<input id="awg-i1" type="text" placeholder="optional CPS"></label>
+              <label>I2<input id="awg-i2" type="text" placeholder="optional CPS"></label>
+              <label>I3<input id="awg-i3" type="text" placeholder="optional CPS"></label>
+              <label>I4<input id="awg-i4" type="text" placeholder="optional CPS"></label>
+              <label>I5<input id="awg-i5" type="text" placeholder="optional CPS"></label>
             </div>
           </details>
         </div>
