@@ -19,6 +19,9 @@ const state = {
 };
 
 const defaults = {
+  "config-source-mode": "import",
+  "awg-profile": "legacy",
+  "awg-mtu": "1280",
   "wg-port": "51830",
   "s1-wan": "eth0",
   "s2-wan": "eth0",
@@ -211,6 +214,196 @@ function safeToken(value) {
 
 function validWgKey(value) {
   return /^[A-Za-z0-9+/]{43}=$/.test(String(value || "").trim());
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const binary = atob(String(value || "").trim());
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+function randomBytes(length) {
+  const out = new Uint8Array(length);
+  if (!globalThis.crypto || typeof globalThis.crypto.getRandomValues !== "function") {
+    throw new Error("Secure browser crypto is unavailable");
+  }
+  globalThis.crypto.getRandomValues(out);
+  return out;
+}
+
+function clampX25519Private(bytes) {
+  const out = new Uint8Array(bytes);
+  out[0] &= 248;
+  out[31] &= 127;
+  out[31] |= 64;
+  return out;
+}
+
+function littleEndianToBigInt(bytes) {
+  let value = 0n;
+  for (let i = bytes.length - 1; i >= 0; i--) value = (value << 8n) | BigInt(bytes[i]);
+  return value;
+}
+
+function bigIntToLittleEndian(value, length) {
+  const out = new Uint8Array(length);
+  let v = value;
+  for (let i = 0; i < length; i++) {
+    out[i] = Number(v & 255n);
+    v >>= 8n;
+  }
+  return out;
+}
+
+function modP(value) {
+  const p = (1n << 255n) - 19n;
+  const r = value % p;
+  return r >= 0n ? r : r + p;
+}
+
+function modPow(base, exponent) {
+  let result = 1n;
+  let b = modP(base);
+  let e = exponent;
+  while (e > 0n) {
+    if (e & 1n) result = modP(result * b);
+    b = modP(b * b);
+    e >>= 1n;
+  }
+  return result;
+}
+
+function x25519PublicFromPrivate(privateKeyBase64) {
+  const raw = base64ToBytes(privateKeyBase64);
+  if (raw.length !== 32) throw new Error("WireGuard private key must be 32 bytes");
+  const scalarBytes = clampX25519Private(raw);
+  const scalar = littleEndianToBigInt(scalarBytes);
+  const x1 = 9n;
+  let x2 = 1n;
+  let z2 = 0n;
+  let x3 = x1;
+  let z3 = 1n;
+  let swap = 0;
+
+  for (let t = 254; t >= 0; t--) {
+    const kt = Number((scalar >> BigInt(t)) & 1n);
+    swap ^= kt;
+    if (swap) {
+      [x2, x3] = [x3, x2];
+      [z2, z3] = [z3, z2];
+    }
+    swap = kt;
+
+    const a = modP(x2 + z2);
+    const aa = modP(a * a);
+    const b = modP(x2 - z2);
+    const bb = modP(b * b);
+    const e = modP(aa - bb);
+    const cc = modP(x3 + z3);
+    const d = modP(x3 - z3);
+    const da = modP(d * a);
+    const cb = modP(cc * b);
+    x3 = modP((da + cb) * (da + cb));
+    z3 = modP(x1 * modP((da - cb) * (da - cb)));
+    x2 = modP(aa * bb);
+    z2 = modP(e * modP(aa + 121665n * e));
+  }
+
+  if (swap) {
+    [x2, x3] = [x3, x2];
+    [z2, z3] = [z3, z2];
+  }
+
+  const p = (1n << 255n) - 19n;
+  const result = modP(x2 * modPow(z2, p - 2n));
+  return bytesToBase64(bigIntToLittleEndian(result, 32));
+}
+
+function generateWgKeyPair() {
+  const privateBytes = clampX25519Private(randomBytes(32));
+  const privateKey = bytesToBase64(privateBytes);
+  return { privateKey, publicKey: x25519PublicFromPrivate(privateKey) };
+}
+
+function generatePresharedKey() {
+  return bytesToBase64(randomBytes(32));
+}
+
+function randomIntInclusive(min, max) {
+  if (!Number.isInteger(min) || !Number.isInteger(max) || max < min) throw new Error("Invalid random range");
+  const span = max - min + 1;
+  const limit = Math.floor(0x100000000 / span) * span;
+  const buf = new Uint32Array(1);
+  do {
+    globalThis.crypto.getRandomValues(buf);
+  } while (buf[0] >= limit);
+  return min + (buf[0] % span);
+}
+
+function generateAwgParameters(profile) {
+  const jc = randomIntInclusive(4, 12);
+  const jmin = randomIntInclusive(8, 40);
+  const jmax = randomIntInclusive(Math.max(jmin + 32, 64), Math.min(jmin + 200, 280));
+  const s1 = randomIntInclusive(15, 150);
+  let s2 = randomIntInclusive(15, 150);
+  while (s1 + 56 === s2) s2 = randomIntInclusive(15, 150);
+
+  const used = new Set();
+  const nextHeader = () => {
+    let n;
+    do { n = randomIntInclusive(5, 2147483647); } while (used.has(n));
+    used.add(n);
+    return n;
+  };
+
+  return {
+    Jc: jc,
+    Jmin: jmin,
+    Jmax: jmax,
+    S1: s1,
+    S2: s2,
+    S3: profile === "awg2" ? randomIntInclusive(8, 55) : "",
+    S4: profile === "awg2" ? randomIntInclusive(4, 27) : "",
+    H1: nextHeader(),
+    H2: nextHeader(),
+    H3: nextHeader(),
+    H4: nextHeader()
+  };
+}
+
+function updateConfigSourceMode() {
+  const mode = $("config-source-mode").value || "import";
+  $("import-configs").classList.toggle("hidden", mode !== "import");
+  $("generate-configs").classList.toggle("hidden", mode !== "generate");
+}
+
+function populateAwgParameterFields(params) {
+  for (const key of ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4"]) {
+    $("awg-" + key.toLowerCase()).value = params[key] === "" ? "" : String(params[key]);
+  }
+}
+
+function awgParametersFromFields() {
+  return {
+    Jc: value("awg-jc"),
+    Jmin: value("awg-jmin"),
+    Jmax: value("awg-jmax"),
+    S1: value("awg-s1"),
+    S2: value("awg-s2"),
+    S3: value("awg-s3"),
+    S4: value("awg-s4"),
+    H1: value("awg-h1"),
+    H2: value("awg-h2"),
+    H3: value("awg-h3"),
+    H4: value("awg-h4")
+  };
 }
 
 function parseDirectRouteDestinations(raw) {
