@@ -112,6 +112,7 @@ AllowedIPs = 10.77.66.1/32, 10.88.99.0/24, 10.88.100.0/24
 
 element("paste-in").value = `[Interface]
 Address = fd01::1/64, 10.88.99.1/24
+ListenPort = 51820
 PrivateKey = ${keyC}
 
 [Peer]
@@ -162,6 +163,7 @@ for (const [id, value] of Object.entries(values)) element(id).value = value;
 
 assert.equal(element("s1-address").value, "10.77.66.1/30", "Must select IPv4 from mixed Address list");
 assert.equal(element("awg-server").value, "10.88.99.1", "Must infer incoming Server1 IPv4");
+assert.equal(element("awg-port").value, "51820", "Must import incoming AWG ListenPort");
 assert.equal(element("awg-net").value, "10.88.99.0/24", "Must infer incoming client subnet");
 assert.equal(element("awg-mt").value, "10.88.99.4", "Must infer MikroTik /32 peer");
 assert.equal(element("s1-mtu").value, "1380");
@@ -192,6 +194,8 @@ assert.match(files["server1/vpn-exit-monitor.sh"], /selected_exit\(\)/);
 assert.match(files["server1/vpn-exit-monitor.sh"], /Selected VPN exit changed/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-s 10.88.99.0\/24 -o eth0/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-s 10.88.100.0\/24 -o eth0/);
+assert.match(files["server1/vpn-failover-firewall.service"], /INPUT -i eth0 -p udp --dport 51820 .*vpn-failover-listener/);
+assert.match(files["server1/vpn-failover-firewall.service"], /INPUT -i eth0 -p udp --dport 51999 .*vpn-failover-listener/);
 assert.match(files["server1/vpn-failover-firewall.service"], /INPUT -i awg0 -p udp -s 10\.88\.99\.4\/32 -d 10\.88\.99\.1\/32 --dport 3784 .*vpn-failover-bfd/);
 assert.match(files["server1/vpn-failover-firewall.service"], /INPUT -i wg-exit -p udp -s 10\.77\.66\.2\/32 -d 10\.77\.66\.1\/32 --dport 3784 .*vpn-failover-bfd/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-i awg0 -o awg0 .* -j DROP/);
@@ -336,6 +340,13 @@ element("mt-route-table").value = "main";
 assert.equal(api.validate().ok, false, "Policy mode must reject main as its routing table");
 element("mt-route-table").value = "VPN";
 assert.equal(api.validate().ok, true, "Policy mode must accept the dedicated VPN table");
+
+// AWG ListenPort is mandatory because Server1 INPUT must be generated explicitly.
+const savedAwgPort = element("awg-port").value;
+element("awg-port").value = "";
+assert.equal(api.validate().ok, false, "Missing AWG ListenPort must be rejected");
+element("awg-port").value = savedAwgPort;
+assert.equal(api.validate().ok, true, "AWG ListenPort restore must validate");
 
 // Alternative MikroTik mode: direct destination routes in main, without mangle/marks.
 element("mt-policy-mode").value = "direct";
