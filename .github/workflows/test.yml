@@ -61,3 +61,9 @@ jobs:
         run: |
           bash -n tests/.generated/vpn-exit-monitor.sh
           bash -n tests/.generated/multi-vpn-exit-monitor.sh
+
+      - name: Validate generated systemd units
+        run: |
+          systemd-analyze verify tests/.generated/vpn-failover-firewall.service
+          systemd-analyze verify tests/.generated/awg-policy-routing.service
+          systemd-analyze verify tests/.generated/multi-vpn-failover-firewall.service
