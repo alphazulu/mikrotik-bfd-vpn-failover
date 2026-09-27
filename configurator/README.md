@@ -79,10 +79,12 @@ Server1 outbound wg-exit interfaces do not require a public listener rule becaus
 
 ## Import or generate
 
-The first step now has two modes:
+Configuration sources are independent:
 
-- **Import existing configs** — parses existing Server1/Server2 WireGuard, incoming AmneziaWG, and optional wg-in files and reuses their topology/key material.
-- **Generate new configs** — creates new X25519 WireGuard key pairs and optional 32-byte PSKs locally in the browser with `crypto.getRandomValues()`.
+- **Incoming AWG / wg-in** can be imported or generated.
+- **Inter-server wg-exit** has its own selector: import existing Server1/Server2 configs or generate fresh tunnels.
+
+Inter-server generation creates new X25519 key pairs locally in the browser for the primary Server2 and every additional exit. If enabled, each tunnel receives its own 32-byte PresharedKey. Empty transfer addresses are populated with separate /30 networks; public Server2 endpoints remain explicit user input.
 
 Generation mode creates:
 - Server1/Server2 `wg-exit` key material for the primary and every additional Server2;
@@ -92,3 +94,18 @@ Generation mode creates:
 AmneziaWG generation supports AWG 2.0, AWG 3.0, and AWG 3.1. AWG 3.1 is the default. AWG 3.x profiles generate a 32-byte `HeaderProtectionKey`, set `S1-S4=12` and `H1-H4=1/2/3/4`, emit current timing/padding ranges, and support optional CPS `I1-I5`. AWG 3.1 also emits `RandomTrailers=on`, `DisableCookies=on`, and client `PersistentKeepalive=25-35`. The server config intentionally omits I1-I5 while the generated client config may contain them, matching the current self-hosted layout.
 
 The Server1 public endpoint is required only for generated client configs.
+
+
+### Inter-server WG generation
+
+When **Generate Server1 ↔ Server2 wg-exit configs** is selected:
+
+- the primary `wg-exit` pair can be generated without importing either side;
+- all additional Server2 entries can be generated together;
+- a newly added Server2 can be generated independently from its card;
+- each exit gets independent Server1/Server2 X25519 key pairs;
+- optional PSK generation is per tunnel, not shared between exits;
+- empty transfer addresses are assigned separate `/30` networks;
+- endpoint, UDP port, priority, WAN interface and MTU remain reviewable/editable before final file generation.
+
+The final bundle still emits ordinary `server1/wg-exit*.conf` and `server2*/wg-exit.conf` files, so import and generation converge on the same validation and output path.
