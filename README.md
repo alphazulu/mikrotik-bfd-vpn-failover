@@ -54,7 +54,10 @@ Server1
 - опционально импортировать входящий AWG-конфиг Server1 и отдельный `wg-in.conf`;
 - автоматически извлекать внутренние tunnel IP, endpoint, UDP listen ports (включая Server1 AWG), WireGuard keys, optional `PresharedKey` и MTU;
 - локально генерировать X25519 key pairs и 32-byte PSK через browser CSPRNG;
-- генерировать пару AmneziaWG server/client (legacy/1.x или AWG 2.x с S3/S4), `wg-exit` для всех Server2 и optional `wg-in` server/client;
+- генерировать пару AmneziaWG server/client для AWG 2.0, AWG 3.0 и AWG 3.1; AWG 3.1 выбран по умолчанию;
+- для AWG 3.x генерировать HeaderProtectionKey, S1-S4 >= 12, H1-H4=1/2/3/4, timing/padding ranges и optional CPS I1-I5;
+- для AWG 3.1 дополнительно генерировать `RandomTrailers=on` и `DisableCookies=on`, а также `PersistentKeepalive=25-35` в клиентском профиле;
+- генерировать `wg-exit` для всех Server2 и optional `wg-in` server/client;
 - проверять, что Server1/Server2 находятся в одной wg-exit подсети;
 - проверять client subnet и BFD-параметры;
 - генерировать готовые конфиги Server1, Server2 и MikroTik;
@@ -64,6 +67,14 @@ Server1
 - выбирать режим MikroTik: либо отдельная RouterOS routing table + `dst-address-list`/mangle, либо прямые статические маршруты в `main` без маркировки;
 - скачивать отдельные файлы или весь комплект одним `.tar`;
 - сохранять source-specific NAT/forwarding для Server2 в `wg-exit.conf`, а fallback NAT Server1 — в отдельном systemd unit.
+
+### AWG 3.0 / 3.1
+
+Режим генерации по умолчанию создаёт **AWG 3.1**. Для Header Protection используются отдельный 32-byte `HeaderProtectionKey`, одинаковые `S1-S4=12` и совместимые фиксированные `H1=1, H2=2, H3=3, H4=4`. Это соответствует текущей рекомендации AmneziaWG для Header Protection и избегает известной проблемы ranged H + RandomTrailers.
+
+Профиль AWG 3.0 создаёт Header Protection и timing/padding параметры, но не добавляет 3.1-only toggles `RandomTrailers` / `DisableCookies`. Профиль AWG 3.1 добавляет их и использует актуальные self-hosted defaults.
+
+Подробно: [AWG 3.0/3.1 generation](docs/AWG3.ru.md).
 
 ### Несколько Server2
 
