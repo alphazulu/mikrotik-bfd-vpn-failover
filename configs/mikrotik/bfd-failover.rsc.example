@@ -53,24 +53,26 @@ add chain=prerouting action=mark-routing new-routing-mark="<MT_ROUTE_TABLE>" pas
 /system script
 add name=VPN-BFD-Conntrack policy=read,write,test source={
     :global vpnBfdLastState
-    :local routeId [/ip route find where comment="VPN_BFD_PRIMARY"]
-    :if ([:len $routeId] = 0) do={
+    :local routeIds [/ip route find where comment="VPN_BFD_PRIMARY"]
+    :if ([:len $routeIds] = 0) do={
         :log warning "VPN-BFD: monitored route not found"
-        :return
-    }
-    :local routeActive [/ip route get $routeId active]
-    :local currentState "DOWN"
-    :if ($routeActive = true) do={ :set currentState "UP" }
-    :if ([:typeof $vpnBfdLastState] = "nothing") do={
-        :set vpnBfdLastState $currentState
-        :log info ("VPN-BFD: initial state = " . $currentState)
-        :return
-    }
-    :if ($currentState != $vpnBfdLastState) do={
-        :local connCount [:len [/ip firewall connection find where connection-mark="CM_VPN"]]
-        :log warning ("VPN-BFD: state changed " . $vpnBfdLastState . " -> " . $currentState . ", removing " . $connCount . " CM_VPN connections")
-        /ip firewall connection remove [find where connection-mark="CM_VPN"]
-        :set vpnBfdLastState $currentState
+    } else={
+        :local routeId [:pick $routeIds 0]
+        :local routeActive [/ip route get $routeId active]
+        :local currentState "DOWN"
+        :if ($routeActive = true) do={ :set currentState "UP" }
+
+        :if ([:typeof $vpnBfdLastState] = "nothing") do={
+            :set vpnBfdLastState $currentState
+            :log info ("VPN-BFD: initial state = " . $currentState)
+        } else={
+            :if ($currentState != $vpnBfdLastState) do={
+                :local connCount [:len [/ip firewall connection find where connection-mark="CM_VPN"]]
+                :log warning ("VPN-BFD: state changed " . $vpnBfdLastState . " -> " . $currentState . ", removing " . $connCount . " CM_VPN connections")
+                /ip firewall connection remove [find where connection-mark="CM_VPN"]
+                :set vpnBfdLastState $currentState
+            }
+        }
     }
 }
 
