@@ -11,6 +11,8 @@ new Function("document", "Node", "navigator", "location", "URL", "Blob", "TextEn
 assert.match(html, /connect-src 'none'/, "CSP must block application network connections");
 assert.match(html, /id="mt-route-table"[^>]*value="VPN"/, "Policy-routing UI must default to a dedicated VPN table");
 assert.match(html, /option value="awg31" selected/, "AWG generation must default to 3.1");
+assert.match(html, /id="wg-exit-source-mode"/, "Configurator must expose an independent inter-server WG source selector");
+assert.match(html, /id="generate-wg-exits"/, "Configurator must expose inter-server WG generation");
 assert.doesNotMatch(src, /\bfetch\s*\(/, "Runtime must not call fetch()");
 assert.doesNotMatch(src, /new\s+XMLHttpRequest|XMLHttpRequest\s*\(/, "Runtime must not use XMLHttpRequest");
 assert.doesNotMatch(src, /new\s+WebSocket|WebSocket\s*\(/, "Runtime must not use WebSocket");
@@ -77,7 +79,7 @@ URLMock.revokeObjectURL = () => {};
 
 const expose = new Function(
   "document", "Node", "navigator", "location", "URL", "Blob", "TextEncoder",
-  src + "\nreturn {state, importConfig, validate, generateFiles, generateVpnMaterial, x25519PublicFromPrivate};"
+  src + "\nreturn {state, importConfig, validate, generateFiles, generateVpnMaterial, generateInterserverWgMaterial, x25519PublicFromPrivate};"
 );
 const api = expose(documentMock, NodeMock, navigatorMock, locationMock, URLMock, Blob, TextEncoder);
 
@@ -377,6 +379,56 @@ element("mt-direct-routes").value = "";
 element("mt-policy-mode").value = "policy";
 assert.equal(api.validate().ok, true, "Policy mode must still validate after direct-mode test");
 
+// Inter-server WG generation is independent from AWG/wg-in import/generation.
+element("config-source-mode").value = "import";
+element("wg-exit-source-mode").value = "generate";
+element("wg-exit-generate-psk").checked = true;
+const importedAwgPrivate = element("awg-private").value;
+api.state.extraExits = [{
+  id: 2,
+  label: "Generated Server2 #2",
+  priority: "20",
+  s1Interface: "wg-exit2",
+  s1Address: "",
+  s2Address: "",
+  endpoint: "198.51.100.20",
+  port: "51831",
+  s1Private: "",
+  s1Public: "",
+  s2Private: "",
+  s2Public: "",
+  psk1: "",
+  psk2: "",
+  s1Mtu: "",
+  s2Mtu: "",
+  s2Wan: "eth0",
+  s1Text: "",
+  s2Text: ""
+}];
+
+api.generateInterserverWgMaterial();
+
+assert.match(element("s1-private").value, /^[A-Za-z0-9+/]{43}=$/);
+assert.match(element("s1-public").value, /^[A-Za-z0-9+/]{43}=$/);
+assert.equal(api.x25519PublicFromPrivate(element("s1-private").value), element("s1-public").value);
+assert.equal(api.x25519PublicFromPrivate(element("s2-private").value), element("s2-public").value);
+assert.equal(element("s1-psk").value, element("s2-psk").value);
+assert.equal(element("awg-private").value, importedAwgPrivate, "Inter-server generation must not replace imported AWG keys");
+
+const generatedExit2 = api.state.extraExits[0];
+assert.equal(generatedExit2.s1Address, "10.77.67.1/30");
+assert.equal(generatedExit2.s2Address, "10.77.67.2/30");
+assert.equal(api.x25519PublicFromPrivate(generatedExit2.s1Private), generatedExit2.s1Public);
+assert.equal(api.x25519PublicFromPrivate(generatedExit2.s2Private), generatedExit2.s2Public);
+assert.equal(generatedExit2.psk1, generatedExit2.psk2);
+assert.equal(api.validate().ok, true, "Generated inter-server WG topology must validate");
+api.generateFiles();
+assert.match(api.state.generated["server1/wg-exit2.conf"], /Address = 10\.77\.67\.1\/30/);
+assert.match(api.state.generated["server2-2/wg-exit.conf"], /Address = 10\.77\.67\.2\/30/);
+assert.match(api.state.generated["server1/wg-exit2.conf"], /Endpoint = 198\.51\.100\.20:51831/);
+
+api.state.extraExits = [];
+
 // Local generation mode: deterministic X25519 regression vector + complete AWG/WG output.
 assert.equal(
   api.x25519PublicFromPrivate("dwdtCnMYpX08FsFyUbJmRd9ML4frwJkqsXf7pR25LCo="),
@@ -385,6 +437,8 @@ assert.equal(
 );
 
 element("config-source-mode").value = "generate";
+element("wg-exit-source-mode").value = "generate";
+element("wg-exit-generate-psk").checked = true;
 element("s1-public-endpoint").value = "203.0.113.10";
 element("awg-profile").value = "awg31";
 element("generate-psk").checked = true;
