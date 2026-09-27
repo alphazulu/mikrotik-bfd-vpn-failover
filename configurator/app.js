@@ -282,6 +282,7 @@ function importConfig(role, text) {
   }
 
   if (role === "in") {
+    if (parsed.interface.ListenPort) $("awg-port").value = parsed.interface.ListenPort;
     const address = firstIpv4Address(parsed.interface.Address);
     const cidr = parseCidr(address);
     if (cidr) {
@@ -625,6 +626,13 @@ function validate() {
   if (Number.isInteger(port) && port >= 1 && port <= 65535) add("good", "UDP port корректен", "UDP port is valid");
   else add("bad", "UDP port должен быть 1..65535", "UDP port must be 1..65535");
 
+  const awgPort = Number(value("awg-port"));
+  if (Number.isInteger(awgPort) && awgPort >= 1 && awgPort <= 65535) {
+    add("good", "Server1 AWG ListenPort корректен", "Server1 AWG ListenPort is valid");
+  } else {
+    add("bad", "Нужен Server1 AWG ListenPort 1..65535 для явного INPUT allow", "Server1 AWG ListenPort 1..65535 is required for an explicit INPUT allow");
+  }
+
   const awgNet = parseCidr(value("awg-net"));
   if (!awgNet) add("bad", "VPN client subnet должен быть IPv4/CIDR", "VPN client subnet must be IPv4/CIDR");
   else add("good", "VPN client subnet корректен", "VPN client subnet is valid");
@@ -837,6 +845,7 @@ function generateFiles() {
   const s1Wan = value("s1-wan");
   const s2Wan = value("s2-wan");
   const awgServer = value("awg-server");
+  const awgPort = value("awg-port");
   const awgMt = value("awg-mt");
   const awgNet = value("awg-net");
   const wgInNet = value("wg-in-net");
@@ -1213,6 +1222,32 @@ ${policyStart}${policyStop}
 [Install]
 WantedBy=multi-user.target
 `;
+  let server1ListenerInputStart = "";
+  let server1ListenerInputStop = "";
+
+  // Server-side VPN listeners must be explicitly reachable through INPUT.
+  server1ListenerInputStart += "\nExecStart=/bin/sh -c \'/usr/sbin/iptables -C INPUT -i " + s1Wan +
+    " -p udp --dport " + awgPort +
+    " -m comment --comment vpn-failover-listener -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I INPUT 1 -i " + s1Wan +
+    " -p udp --dport " + awgPort +
+    " -m comment --comment vpn-failover-listener -j ACCEPT\'";
+  server1ListenerInputStop =
+    "\nExecStop=/bin/sh -c \'/usr/sbin/iptables -D INPUT -i " + s1Wan +
+    " -p udp --dport " + awgPort +
+    " -m comment --comment vpn-failover-listener -j ACCEPT 2>/dev/null || true\'" + server1ListenerInputStop;
+
+  if (hasWgInConfig) {
+    server1ListenerInputStart += "\nExecStart=/bin/sh -c \'/usr/sbin/iptables -C INPUT -i " + s1Wan +
+      " -p udp --dport " + wgInPort +
+      " -m comment --comment vpn-failover-listener -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I INPUT 1 -i " + s1Wan +
+      " -p udp --dport " + wgInPort +
+      " -m comment --comment vpn-failover-listener -j ACCEPT\'";
+    server1ListenerInputStop =
+      "\nExecStop=/bin/sh -c \'/usr/sbin/iptables -D INPUT -i " + s1Wan +
+      " -p udp --dport " + wgInPort +
+      " -m comment --comment vpn-failover-listener -j ACCEPT 2>/dev/null || true\'" + server1ListenerInputStop;
+  }
+
   let server1BfdInputStart = "";
   let server1BfdInputStop = "";
 
@@ -1247,7 +1282,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-RemainAfterExit=yes${server1BfdInputStart}
+RemainAfterExit=yes${server1ListenerInputStart}${server1BfdInputStart}
 ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i ${awgIf} -o ${awgIf} -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || /usr/sbin/iptables -I FORWARD 1 -i ${awgIf} -o ${awgIf} -m comment --comment vpn-failover-forward -j DROP'
 ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i ${awgIf} -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 2 -i ${awgIf} -m comment --comment vpn-failover-forward -j ACCEPT'
 ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -o ${awgIf} -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 3 -o ${awgIf} -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT'
@@ -1255,7 +1290,7 @@ ExecStart=/bin/sh -c '/usr/sbin/iptables -t nat -C POSTROUTING -s ${awgNet} -o $
 ExecStop=/bin/sh -c '/usr/sbin/iptables -t nat -D POSTROUTING -s ${awgNet} -o ${s1Wan} -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || true'${fallbackNatExtraStop}
 ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -o ${awgIf} -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'
 ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i ${awgIf} -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'
-ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i ${awgIf} -o ${awgIf} -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || true'${server1BfdInputStop}
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i ${awgIf} -o ${awgIf} -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || true'${server1BfdInputStop}${server1ListenerInputStop}
 
 [Install]
 WantedBy=multi-user.target
@@ -1533,7 +1568,7 @@ ${server1ExitChmodRu}${hasWgInConfig ? "\n   chmod 600 /etc/wireguard/" + wgInIf
 ${server1ExitStartRu}${wgInStartRu}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
-   # unit открывает UDP/3784 INPUT для BFD от MikroTik и всех Server2
+   # unit явно открывает INPUT: AWG UDP/${awgPort}, ${hasWgInConfig ? "wg-in UDP/" + wgInPort + ", " : ""}BFD UDP/3784
    systemctl enable bird
    systemctl restart bird
    systemctl enable --now vpn-exit-monitor.service
@@ -1600,7 +1635,7 @@ ${server1ExitInstallEn}${wgInInstallEn}
 ${server1ExitStartRu}${wgInStartEn}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
-   # unit permits UDP/3784 INPUT BFD from MikroTik and all Server2 exits
+   # unit explicitly permits INPUT: AWG UDP/${awgPort}, ${hasWgInConfig ? "wg-in UDP/" + wgInPort + ", " : ""}BFD UDP/3784
    systemctl enable bird
    systemctl restart bird
    systemctl enable --now vpn-exit-monitor.service
