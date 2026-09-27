@@ -89,6 +89,6 @@ Generation mode creates:
 - `server1/<awg-interface>.conf` plus `clients/<awg-interface>-client.conf`;
 - optional `server1/wg-in.conf` plus `clients/wg-in-client.conf`.
 
-AmneziaWG generation supports a compatibility-oriented legacy/1.x profile (`Jc/Jmin/Jmax/S1/S2/H1-H4`) and an AWG 2.x profile that additionally emits `S3/S4`. AWG 3.x HeaderProtectionKey/I1-I5 generation is not enabled by this mode yet.
+AmneziaWG generation supports AWG 2.0, AWG 3.0, and AWG 3.1. AWG 3.1 is the default. AWG 3.x profiles generate a 32-byte `HeaderProtectionKey`, set `S1-S4=12` and `H1-H4=1/2/3/4`, emit current timing/padding ranges, and support optional CPS `I1-I5`. AWG 3.1 also emits `RandomTrailers=on`, `DisableCookies=on`, and client `PersistentKeepalive=25-35`. The server config intentionally omits I1-I5 while the generated client config may contain them, matching the current self-hosted layout.
 
 The Server1 public endpoint is required only for generated client configs.
