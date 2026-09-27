@@ -412,7 +412,7 @@ assert.match(generatedModeFiles["clients/awg0-client.conf"], /AllowedIPs = 0\.0\
 assert.match(generatedModeFiles["clients/wg-in-client.conf"], /Endpoint = 203\.0\.113\.10:51999/);
 assert.match(generatedModeFiles["clients/wg-in-client.conf"], /Address = 10\.88\.100\.2\/32/);
 assert.match(generatedModeFiles["server1/vpn-failover-firewall.service"], /--dport 51820 .*vpn-failover-listener/);
-assert.match(generatedModeFiles["server1/vpn-failover-firewall.service"], /--dport 51831 .*vpn-failover-listener/);
+assert.match(generatedModeFiles["server1/vpn-failover-firewall.service"], /--dport 51999 .*vpn-failover-listener/);
 
 element("config-source-mode").value = "import";
 
