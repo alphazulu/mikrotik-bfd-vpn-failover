@@ -1890,6 +1890,20 @@ ${mikrotikPolicyBlock}`;
   const wgInStartEn = hasWgInConfig
     ? "\n   systemctl enable --now wg-quick@" + wgInIf
     : "";
+  const generatedAwgInstallRu = sourceMode === "generate"
+    ? "\n   server1/" + awgIf + ".conf -> /etc/amnezia/amneziawg/" + awgIf + ".conf" +
+      "\n   клиентский AWG: clients/" + awgIf + "-client.conf"
+    : "";
+  const generatedAwgInstallEn = sourceMode === "generate"
+    ? "\n   server1/" + awgIf + ".conf -> /etc/amnezia/amneziawg/" + awgIf + ".conf" +
+      "\n   AWG client: clients/" + awgIf + "-client.conf"
+    : "";
+  const generatedWgInClientRu = sourceMode === "generate" && $("generate-wgin").checked
+    ? "\n   клиентский WG: clients/" + wgInIf + "-client.conf"
+    : "";
+  const generatedWgInClientEn = sourceMode === "generate" && $("generate-wgin").checked
+    ? "\n   WG client: clients/" + wgInIf + "-client.conf"
+    : "";
 
   const server1ExitInstallRu = exits.map((exit) =>
     "   server1/" + exit.s1Interface + ".conf -> /etc/wireguard/" + exit.s1Interface + ".conf").join("\n");
