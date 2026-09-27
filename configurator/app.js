@@ -1533,8 +1533,7 @@ ${server1ExitChmodRu}${hasWgInConfig ? "\n   chmod 600 /etc/wireguard/" + wgInIf
 ${server1ExitStartRu}${wgInStartRu}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
-   # this unit also permits UDP/3784 INPUT BFD from MikroTik and all Server2 exits
-   # этот unit также открывает UDP/3784 INPUT для BFD от MikroTik и всех Server2
+   # unit открывает UDP/3784 INPUT для BFD от MikroTik и всех Server2
    systemctl enable bird
    systemctl restart bird
    systemctl enable --now vpn-exit-monitor.service
@@ -1601,6 +1600,7 @@ ${server1ExitInstallEn}${wgInInstallEn}
 ${server1ExitStartRu}${wgInStartEn}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
+   # unit permits UDP/3784 INPUT BFD from MikroTik and all Server2 exits
    systemctl enable bird
    systemctl restart bird
    systemctl enable --now vpn-exit-monitor.service
