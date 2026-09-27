@@ -1454,7 +1454,7 @@ ${mikrotikPolicyBlock}`;
    ${exit.outputDir}/wg-exit.conf -> /etc/wireguard/wg-exit.conf
    ${exit.outputDir}/bird.conf    -> /etc/bird/bird.conf
 
-4. NAT и FORWARD уже включены в wg-exit.conf как PostUp/PostDown.
+4. WG listener, BFD INPUT/UDP 3784, NAT и FORWARD уже включены в wg-exit.conf как PostUp/PostDown.
 
 5. Запустить:
    systemctl enable --now wg-quick@wg-exit
@@ -1476,7 +1476,7 @@ ${mikrotikPolicyBlock}`;
    ${exit.outputDir}/wg-exit.conf -> /etc/wireguard/wg-exit.conf
    ${exit.outputDir}/bird.conf    -> /etc/bird/bird.conf
 
-4. NAT and FORWARD are already included in wg-exit.conf as PostUp/PostDown.
+4. The WG listener, BFD INPUT/UDP 3784, NAT and FORWARD are already included in wg-exit.conf as PostUp/PostDown.
 
 5. Start:
    systemctl enable --now wg-quick@wg-exit
@@ -1533,6 +1533,8 @@ ${server1ExitChmodRu}${hasWgInConfig ? "\n   chmod 600 /etc/wireguard/" + wgInIf
 ${server1ExitStartRu}${wgInStartRu}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
+   # this unit also permits UDP/3784 INPUT BFD from MikroTik and all Server2 exits
+   # этот unit также открывает UDP/3784 INPUT для BFD от MikroTik и всех Server2
    systemctl enable bird
    systemctl restart bird
    systemctl enable --now vpn-exit-monitor.service
