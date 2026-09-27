@@ -20,6 +20,7 @@ const state = {
 
 const defaults = {
   "config-source-mode": "import",
+  "wg-exit-source-mode": "import",
   "awg-profile": "awg31",
   "awg-mtu": "1280",
   "wg-port": "51830",
@@ -465,9 +466,25 @@ function awg3ParametersFromFields() {
 }
 
 function updateConfigSourceMode() {
-  const mode = $("config-source-mode").value || "import";
-  $("import-configs").classList.toggle("hidden", mode !== "import");
-  $("generate-configs").classList.toggle("hidden", mode !== "generate");
+  const incomingMode = $("config-source-mode").value || "import";
+  const exitMode = $("wg-exit-source-mode").value || "import";
+
+  document.querySelectorAll(".incoming-import-box").forEach((el) => {
+    el.classList.toggle("hidden", incomingMode !== "import");
+  });
+  document.querySelectorAll(".wg-exit-import-box").forEach((el) => {
+    el.classList.toggle("hidden", exitMode !== "import");
+  });
+
+  $("import-configs").classList.toggle("hidden", incomingMode !== "import" && exitMode !== "import");
+  $("generate-configs").classList.toggle("hidden", incomingMode !== "generate");
+}
+
+function updateWgExitSourceMode() {
+  updateConfigSourceMode();
+  const mode = $("wg-exit-source-mode").value || "import";
+  $("wg-exit-generate-controls").classList.toggle("hidden", mode !== "generate");
+  renderExtraExits();
 }
 
 function populateAwgParameterFields(params) {
@@ -742,6 +759,23 @@ function renderExtraExits() {
       renderExtraExits();
     });
     head.appendChild(title);
+    if (($("wg-exit-source-mode").value || "import") === "generate") {
+      const generate = document.createElement("button");
+      generate.type = "button";
+      generate.className = "secondary small";
+      generate.textContent = tr("Сгенерировать WG", "Generate WG");
+      generate.addEventListener("click", () => {
+        generateInterserverExit(exit.id);
+        renderExtraExits();
+        updateSecretVisibility();
+        setStatus(
+          "status-wg-exits-generated",
+          "good",
+          tr("WG-пара для " + (exit.label || ("Server2 #" + exit.id)) + " сгенерирована.", "WG pair generated for " + (exit.label || ("Server2 #" + exit.id)) + ".")
+        );
+      });
+      head.appendChild(generate);
+    }
     head.appendChild(remove);
     card.appendChild(head);
 
@@ -763,7 +797,9 @@ function renderExtraExits() {
 
     const details = document.createElement("details");
     const summary = document.createElement("summary");
-    summary.textContent = tr("WireGuard ключи и импорт конфигов", "WireGuard keys and config import");
+    summary.textContent = (($("wg-exit-source-mode").value || "import") === "generate")
+      ? tr("Сгенерированные WireGuard ключи", "Generated WireGuard keys")
+      : tr("WireGuard ключи и импорт конфигов", "WireGuard keys and config import");
     details.appendChild(summary);
 
     const importGrid = document.createElement("div");
@@ -801,7 +837,9 @@ function renderExtraExits() {
       box.appendChild(parse);
       importGrid.appendChild(box);
     }
-    details.appendChild(importGrid);
+    if (($("wg-exit-source-mode").value || "import") === "import") {
+      details.appendChild(importGrid);
+    }
 
     const keyGrid = document.createElement("div");
     keyGrid.className = "grid form-grid";
@@ -894,45 +932,90 @@ function setIfEmpty(id, val) {
   if (!value(id)) $(id).value = val;
 }
 
+function interserverExitOrdinal(exitId) {
+  if (exitId === 1) return 0;
+  const index = state.extraExits.findIndex((item) => item.id === exitId);
+  return index >= 0 ? index + 1 : 0;
+}
+
+function generateInterserverExit(exitId) {
+  const usePsk = $("wg-exit-generate-psk").checked;
+  const ordinal = interserverExitOrdinal(exitId);
+  const third = 66 + ordinal;
+  const s1Pair = generateWgKeyPair();
+  const s2Pair = generateWgKeyPair();
+  const psk = usePsk ? generatePresharedKey() : "";
+
+  if (exitId === 1) {
+    setIfEmpty("s1-address", "10.77." + third + ".1/30");
+    setIfEmpty("s2-address", "10.77." + third + ".2/30");
+    $("s1-private").value = s1Pair.privateKey;
+    $("s1-public").value = s1Pair.publicKey;
+    $("s2-private").value = s2Pair.privateKey;
+    $("s2-public").value = s2Pair.publicKey;
+    $("s1-psk").value = psk;
+    $("s2-psk").value = psk;
+    return;
+  }
+
+  const exit = state.extraExits.find((item) => item.id === exitId);
+  if (!exit) throw new Error("Unknown Server2 exit " + exitId);
+  if (!exit.s1Address) exit.s1Address = "10.77." + third + ".1/30";
+  if (!exit.s2Address) exit.s2Address = "10.77." + third + ".2/30";
+  exit.s1Private = s1Pair.privateKey;
+  exit.s1Public = s1Pair.publicKey;
+  exit.s2Private = s2Pair.privateKey;
+  exit.s2Public = s2Pair.publicKey;
+  exit.psk1 = psk;
+  exit.psk2 = psk;
+}
+
+function generateInterserverWgMaterial(options = {}) {
+  try {
+    $("wg-exit-source-mode").value = "generate";
+    updateWgExitSourceMode();
+
+    generateInterserverExit(1);
+    state.extraExits.forEach((exit) => generateInterserverExit(exit.id));
+
+    renderExtraExits();
+    updateSecretVisibility();
+
+    if (!options.silent) {
+      setStatus(
+        "status-wg-exits-generated",
+        "good",
+        tr(
+          "Межсерверные WireGuard пары сгенерированы локально. Для каждого Server2 проверьте endpoint/port/priority, затем запустите общую проверку.",
+          "Inter-server WireGuard pairs were generated locally. Verify endpoint/port/priority for every Server2, then run the full validation."
+        )
+      );
+    }
+  } catch (err) {
+    setStatus(
+      "status-wg-exits-generated",
+      "bad",
+      tr("Ошибка генерации межсерверных WG: ", "Inter-server WG generation error: ") +
+        (err && err.message ? err.message : String(err))
+    );
+  }
+}
+
 function generateVpnMaterial() {
   try {
     $("config-source-mode").value = "generate";
     updateConfigSourceMode();
 
-    setIfEmpty("s1-address", "10.77.66.1/30");
-    setIfEmpty("s2-address", "10.77.66.2/30");
     setIfEmpty("awg-server", "10.88.99.1");
     setIfEmpty("awg-mt", "10.88.99.4");
     setIfEmpty("awg-net", "10.88.99.0/24");
     setIfEmpty("awg-port", "51820");
 
-    const primaryS1 = generateWgKeyPair();
-    const primaryS2 = generateWgKeyPair();
-    $("s1-private").value = primaryS1.privateKey;
-    $("s1-public").value = primaryS1.publicKey;
-    $("s2-private").value = primaryS2.privateKey;
-    $("s2-public").value = primaryS2.publicKey;
+    if (($("wg-exit-source-mode").value || "import") === "generate") {
+      generateInterserverWgMaterial({ silent: true });
+    }
 
     const usePsk = $("generate-psk").checked;
-    const primaryPsk = usePsk ? generatePresharedKey() : "";
-    $("s1-psk").value = primaryPsk;
-    $("s2-psk").value = primaryPsk;
-
-    state.extraExits.forEach((exit, index) => {
-      const third = 67 + index;
-      if (!exit.s1Address) exit.s1Address = "10.77." + third + ".1/30";
-      if (!exit.s2Address) exit.s2Address = "10.77." + third + ".2/30";
-      const a = generateWgKeyPair();
-      const b = generateWgKeyPair();
-      exit.s1Private = a.privateKey;
-      exit.s1Public = a.publicKey;
-      exit.s2Private = b.privateKey;
-      exit.s2Public = b.publicKey;
-      const psk = usePsk ? generatePresharedKey() : "";
-      exit.psk1 = psk;
-      exit.psk2 = psk;
-    });
-
     const awgServerPair = generateWgKeyPair();
     const awgPeerPair = generateWgKeyPair();
     $("awg-private").value = awgServerPair.privateKey;
