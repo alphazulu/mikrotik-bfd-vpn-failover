@@ -29,6 +29,7 @@ Server1
 - опциональный дополнительный входящий WireGuard-интерфейс;
 - один или несколько независимых межсерверных WireGuard-выходов `wg-exit`, `wg-exit2`, ...;
 - независимый BFD между Server1 и каждым Server2;
+- автоматические firewall INPUT rules для single-hop BFD UDP/3784 на Server1, каждом Server2 и MikroTik;
 - BIRD 2.x для автоматического добавления/удаления default route;
 - упорядоченный Linux policy routing через table `200`, `201`, `202`, ... согласно priority Server2;
 - автоматический переход Server2 → следующий Server2 → WAN Server1;
@@ -55,7 +56,7 @@ Server1
 - проверять client subnet и BFD-параметры;
 - генерировать готовые конфиги Server1, Server2 и MikroTik;
 - генерировать optional `server1/wg-in.conf` с собственными `PostUp`/`PreDown` для `ip rule` и FORWARD;
-- генерировать BIRD/BFD, Linux policy routing, systemd units, persistent Server1 FORWARD/fallback NAT и event-driven conntrack cleanup;
+- генерировать BIRD/BFD, Linux policy routing, systemd units, persistent Server1 FORWARD/fallback NAT, необходимые BFD INPUT rules и event-driven conntrack cleanup;
 - формировать MikroTik `check-gateway=bfd` и очистку только `CM_VPN`;
 - выбирать режим MikroTik: либо отдельная RouterOS routing table + `dst-address-list`/mangle, либо прямые статические маршруты в `main` без маркировки;
 - скачивать отдельные файлы или весь комплект одним `.tar`;
@@ -99,7 +100,9 @@ English: [Multiple Server2 exits and prioritized failover](docs/MULTI_EXIT.md).
 - проверка CSP `connect-src 'none'`;
 - `bird -p` для сгенерированных BIRD-конфигов;
 - `wg-quick strip` для сгенерированных WireGuard-конфигов;
-- `bash -n` для shell-скрипта conntrack monitor.
+- `bash -n` для shell-скрипта conntrack monitor;
+- `systemd-analyze verify` для сгенерированных firewall/policy-routing units;
+- regression assertions для UDP/3784 BFD INPUT rules на Server1, Server2 и MikroTik.
 
 ### Приватность конфигуратора
 
@@ -248,6 +251,19 @@ MikroTik следит за BFD-маршрутом до Server1. Скрипт з�
 ```
 
 Таким образом, при смене пути не приходится ждать таймаутов старых TCP/UDP/NAT states.
+
+### Firewall для BFD
+
+BFD — это control-plane traffic, который завершается на самом узле, поэтому он проходит через `INPUT`, а не `FORWARD`.
+
+В этой схеме используется single-hop BFD, поэтому разрешается только UDP destination port `3784` и только между точными tunnel IP/interface:
+
+- MikroTik принимает BFD от Server1 на AWG-интерфейсе;
+- Server1 принимает BFD от MikroTik на `awg0` и от каждого Server2 на соответствующем `wg-exit*`;
+- каждый Server2 принимает BFD от Server1 на своём `wg-exit`;
+- Server2 также получает explicit INPUT allow для публичного WireGuard UDP listen port.
+
+Генератор создаёт узкие правила по source/destination/interface, а не общий allow UDP/3784 со всех сетей.
 
 ## Почему BFD, а не ping/Netwatch
 
