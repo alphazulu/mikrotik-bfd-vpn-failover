@@ -58,3 +58,10 @@ Security properties:
 - private keys are masked in preview unless the user explicitly reveals them.
 
 The downloaded generated bundle can contain real private keys and must be treated as sensitive material.
+
+
+## Local key generation
+
+Generate mode uses the browser cryptographic random-number generator (`crypto.getRandomValues()`) and performs X25519 public-key derivation locally. Generated private keys and PSKs exist only in the current tab until downloaded; the application still has `connect-src 'none'` and does not send them over the network.
+
+Downloaded generated bundles contain private keys and must be treated as secrets.
