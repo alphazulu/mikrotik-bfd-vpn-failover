@@ -163,6 +163,32 @@ systemctl enable --now wg-quick@wg-exit2
 # ...
 ```
 
+## 6.1 Generate inter-server WireGuard instead of importing
+
+The browser configurator has an independent **Inter-server WG source** selector.
+
+Choose **Generate Server1 ↔ Server2 wg-exit configs** to create the inter-server WireGuard material locally without importing existing `wg-exit.conf` files.
+
+For each exit the configurator generates:
+
+- a Server1 X25519 private/public key pair;
+- a Server2 X25519 private/public key pair;
+- an optional unique PresharedKey for that tunnel;
+- a separate `/30` transfer subnet when the address fields are empty.
+
+The public endpoint of each Server2 is not guessed and must be entered explicitly. Priority, UDP port, WAN interface, MTU and interface name remain editable.
+
+The same operation supports the primary Server2 and every additional Server2. Generated outputs are installed exactly like imported ones:
+
+```text
+server1/wg-exit.conf
+server1/wg-exit2.conf
+...
+server2/wg-exit.conf
+server2-2/wg-exit.conf
+...
+```
+
 ## 7. Server1 — policy rules
 
 Single-exit deployments keep the original rule:
