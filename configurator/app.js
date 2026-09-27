@@ -1015,9 +1015,14 @@ Address = ${s2Addr}
 ListenPort = ${port}
 PrivateKey = ${s2Private}${s2MtuLine}
 
+# Public WireGuard transport and inner single-hop BFD (UDP/3784).
+PostUp = iptables -C INPUT -i ${s2Wan} -p udp --dport ${port} -m comment --comment wg-exit-listen -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -i ${s2Wan} -p udp --dport ${port} -m comment --comment wg-exit-listen -j ACCEPT
+PostUp = iptables -C INPUT -i %i -p udp -s ${s1Ip}/32 -d ${s2Ip}/32 --dport 3784 -m comment --comment wg-exit-bfd -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -i %i -p udp -s ${s1Ip}/32 -d ${s2Ip}/32 --dport 3784 -m comment --comment wg-exit-bfd -j ACCEPT
 PostUp = iptables -C FORWARD -i %i -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i %i -m comment --comment wg-exit-failover -j ACCEPT
 PostUp = iptables -C FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT
 PostUp = iptables -t nat -C POSTROUTING -s ${awgNet} -o ${s2Wan} -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s ${awgNet} -o ${s2Wan} -m comment --comment wg-exit-failover -j MASQUERADE${server2NatExtra}
+PostDown = iptables -D INPUT -i %i -p udp -s ${s1Ip}/32 -d ${s2Ip}/32 --dport 3784 -m comment --comment wg-exit-bfd -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D INPUT -i ${s2Wan} -p udp --dport ${port} -m comment --comment wg-exit-listen -j ACCEPT 2>/dev/null || true
 PostDown = iptables -D FORWARD -i %i -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || true
 PostDown = iptables -D FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || true
 PostDown = iptables -t nat -D POSTROUTING -s ${awgNet} -o ${s2Wan} -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || true
@@ -1142,9 +1147,14 @@ Address = ${exit.s2Address}
 ListenPort = ${exit.port}
 PrivateKey = ${exit.s2Private}${s2MtuLineExit}
 
+# Public WireGuard transport and inner single-hop BFD (UDP/3784).
+PostUp = iptables -C INPUT -i ${exit.s2Wan} -p udp --dport ${exit.port} -m comment --comment wg-exit-listen -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -i ${exit.s2Wan} -p udp --dport ${exit.port} -m comment --comment wg-exit-listen -j ACCEPT
+PostUp = iptables -C INPUT -i %i -p udp -s ${exit.s1Ip}/32 -d ${exit.s2Ip}/32 --dport 3784 -m comment --comment wg-exit-bfd -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -i %i -p udp -s ${exit.s1Ip}/32 -d ${exit.s2Ip}/32 --dport 3784 -m comment --comment wg-exit-bfd -j ACCEPT
 PostUp = iptables -C FORWARD -i %i -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i %i -m comment --comment wg-exit-failover -j ACCEPT
 PostUp = iptables -C FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT
-${extraNatUp}PostDown = iptables -D FORWARD -i %i -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || true
+${extraNatUp}PostDown = iptables -D INPUT -i %i -p udp -s ${exit.s1Ip}/32 -d ${exit.s2Ip}/32 --dport 3784 -m comment --comment wg-exit-bfd -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D INPUT -i ${exit.s2Wan} -p udp --dport ${exit.port} -m comment --comment wg-exit-listen -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D FORWARD -i %i -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || true
 PostDown = iptables -D FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || true
 ${extraNatDown}
 [Peer]
@@ -1203,6 +1213,32 @@ ${policyStart}${policyStop}
 [Install]
 WantedBy=multi-user.target
 `;
+  let server1BfdInputStart = "";
+  let server1BfdInputStop = "";
+
+  // BFD is local control-plane traffic, so it must be accepted in INPUT,
+  // not FORWARD. Single-hop BFD control packets use UDP destination port 3784.
+  server1BfdInputStart += "\nExecStart=/bin/sh -c \'/usr/sbin/iptables -C INPUT -i " + awgIf +
+    " -p udp -s " + awgMt + "/32 -d " + awgServer +
+    "/32 --dport 3784 -m comment --comment vpn-failover-bfd -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I INPUT 1 -i " + awgIf +
+    " -p udp -s " + awgMt + "/32 -d " + awgServer +
+    "/32 --dport 3784 -m comment --comment vpn-failover-bfd -j ACCEPT\'";
+  server1BfdInputStop =
+    "\nExecStop=/bin/sh -c \'/usr/sbin/iptables -D INPUT -i " + awgIf +
+    " -p udp -s " + awgMt + "/32 -d " + awgServer +
+    "/32 --dport 3784 -m comment --comment vpn-failover-bfd -j ACCEPT 2>/dev/null || true\'" + server1BfdInputStop;
+
+  exits.forEach((exit) => {
+    server1BfdInputStart += "\nExecStart=/bin/sh -c \'/usr/sbin/iptables -C INPUT -i " + exit.s1Interface +
+      " -p udp -s " + exit.s2Ip + "/32 -d " + exit.s1Ip +
+      "/32 --dport 3784 -m comment --comment vpn-failover-bfd -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I INPUT 1 -i " + exit.s1Interface +
+      " -p udp -s " + exit.s2Ip + "/32 -d " + exit.s1Ip +
+      "/32 --dport 3784 -m comment --comment vpn-failover-bfd -j ACCEPT\'";
+    server1BfdInputStop =
+      "\nExecStop=/bin/sh -c \'/usr/sbin/iptables -D INPUT -i " + exit.s1Interface +
+      " -p udp -s " + exit.s2Ip + "/32 -d " + exit.s1Ip +
+      "/32 --dport 3784 -m comment --comment vpn-failover-bfd -j ACCEPT 2>/dev/null || true\'" + server1BfdInputStop;
+  });
   files["server1/vpn-failover-firewall.service"] =
 `[Unit]
 Description=Persistent forwarding and fallback NAT for VPN client traffic
@@ -1211,7 +1247,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-RemainAfterExit=yes
+RemainAfterExit=yes${server1BfdInputStart}
 ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i ${awgIf} -o ${awgIf} -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || /usr/sbin/iptables -I FORWARD 1 -i ${awgIf} -o ${awgIf} -m comment --comment vpn-failover-forward -j DROP'
 ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -i ${awgIf} -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 2 -i ${awgIf} -m comment --comment vpn-failover-forward -j ACCEPT'
 ExecStart=/bin/sh -c '/usr/sbin/iptables -C FORWARD -o ${awgIf} -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I FORWARD 3 -o ${awgIf} -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT'
@@ -1219,7 +1255,7 @@ ExecStart=/bin/sh -c '/usr/sbin/iptables -t nat -C POSTROUTING -s ${awgNet} -o $
 ExecStop=/bin/sh -c '/usr/sbin/iptables -t nat -D POSTROUTING -s ${awgNet} -o ${s1Wan} -m comment --comment vpn-failover-fallback -j MASQUERADE 2>/dev/null || true'${fallbackNatExtraStop}
 ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -o ${awgIf} -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'
 ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i ${awgIf} -m comment --comment vpn-failover-forward -j ACCEPT 2>/dev/null || true'
-ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i ${awgIf} -o ${awgIf} -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || true'
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i ${awgIf} -o ${awgIf} -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || true'${server1BfdInputStop}
 
 [Install]
 WantedBy=multi-user.target
@@ -1300,6 +1336,17 @@ WantedBy=multi-user.target
 
 /ip address
 add address=${awgMt}/32 network=${awgServer} interface=${qRouter(mtIf)} comment="AWG BFD point-to-point"
+
+# Single-hop BFD terminates on the router itself: allow UDP/3784 in INPUT.
+# If an INPUT drop rule exists, insert this narrow accept before the first drop.
+:if ([:len [/ip firewall filter find where comment="VPN_BFD_INPUT"]] = 0) do={
+    :local inputDrop [/ip firewall filter find where chain=input action=drop]
+    :if ([:len $inputDrop] > 0) do={
+        /ip firewall filter add action=accept chain=input protocol=udp dst-port=3784 src-address=${awgServer}/32 dst-address=${awgMt}/32 in-interface=${qRouter(mtIf)} comment="VPN_BFD_INPUT" place-before=($inputDrop->0)
+    } else={
+        /ip firewall filter add action=accept chain=input protocol=udp dst-port=3784 src-address=${awgServer}/32 dst-address=${awgMt}/32 in-interface=${qRouter(mtIf)} comment="VPN_BFD_INPUT"
+    }
+}
 
 /routing bfd configuration
 add interfaces=${qRouter(mtIf)} addresses=${awgServer}/32 min-rx=${bfd}ms min-tx=${bfd}ms multiplier=${mult}
