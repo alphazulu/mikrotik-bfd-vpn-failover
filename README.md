@@ -29,7 +29,7 @@ Server1
 - опциональный дополнительный входящий WireGuard-интерфейс;
 - один или несколько независимых межсерверных WireGuard-выходов `wg-exit`, `wg-exit2`, ...;
 - независимый BFD между Server1 и каждым Server2;
-- автоматические firewall INPUT rules для single-hop BFD UDP/3784 на Server1, каждом Server2 и MikroTik;
+- явные firewall INPUT rules для всех серверных VPN-listener ports (Server1 AWG, optional wg-in, каждый Server2 wg-exit) и single-hop BFD UDP/3784;
 - BIRD 2.x для автоматического добавления/удаления default route;
 - упорядоченный Linux policy routing через table `200`, `201`, `202`, ... согласно priority Server2;
 - автоматический переход Server2 → следующий Server2 → WAN Server1;
@@ -51,7 +51,7 @@ Server1
 - импортировать `wg-exit` конфигурации Server1 и Server2;
 - добавлять дополнительные Server2, задавать каждому priority, отдельный Server1 WireGuard interface и импортировать обе стороны его туннеля;
 - опционально импортировать входящий AWG-конфиг Server1 и отдельный `wg-in.conf`;
-- автоматически извлекать внутренние tunnel IP, endpoint, UDP port, WireGuard keys, optional `PresharedKey` и MTU;
+- автоматически извлекать внутренние tunnel IP, endpoint, UDP listen ports (включая Server1 AWG), WireGuard keys, optional `PresharedKey` и MTU;
 - проверять, что Server1/Server2 находятся в одной wg-exit подсети;
 - проверять client subnet и BFD-параметры;
 - генерировать готовые конфиги Server1, Server2 и MikroTik;
