@@ -96,6 +96,41 @@ SYSCTL
 sysctl --system
 ```
 
+## 5.1 Server1 — generated AWG 3.x
+
+If the configurator is used in **Generate new AWG/WG configs** mode, it also creates:
+
+```text
+server1/<AWG_IF>.conf
+clients/<AWG_IF>-client.conf
+```
+
+AWG 3.1 is the default generation profile.
+
+The generated AWG file requires an AmneziaWG runtime/toolchain that understands AWG 3.x fields. Standard WireGuard `wg-quick` is not sufficient for `HeaderProtectionKey`, `ContentPaddingAddition`, `RandomTrailers`, and the other AWG-specific parameters.
+
+Use current `amneziawg-tools` plus a compatible current `amneziawg-go` or AWG 3.1 kernel module. Do not mix a new userspace tool with an old kernel module: an old module may allow interface creation but reject the subsequent configuration.
+
+For the AWG 3.1 profile the configurator emits:
+
+```text
+S1=S2=S3=S4=12
+H1=1 H2=2 H3=3 H4=4
+HeaderProtectionKey=<32-byte base64 key>
+ContentPaddingAddition=10-100
+RekeyAfterTime=100-120
+RekeyTimeout=3-7
+RejectAfterTime=150-180
+KeepaliveTimeout=5-15
+MaxHandshakeAttempts=15-20
+RandomTrailers=on
+DisableCookies=on
+```
+
+The generated client uses `PersistentKeepalive=25-35`.
+
+See [AWG3.md](AWG3.md) for the version/compatibility rationale and validation rules.
+
 ## 6. Server1 — wg-exit interfaces
 
 For one Server2, create `/etc/wireguard/wg-exit.conf` from `configs/server1/wg-exit.conf.example`.
