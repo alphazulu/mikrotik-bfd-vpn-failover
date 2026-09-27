@@ -5,6 +5,17 @@
 /ip address
 add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF> comment="AWG tunnel P2P address"
 
+# BFD is addressed to the router itself, so it traverses chain=input.
+# Insert the narrow UDP/3784 accept before the first INPUT drop if one exists.
+:if ([:len [/ip firewall filter find where comment="VPN_BFD_INPUT"]] = 0) do={
+    :local inputDrop [/ip firewall filter find where chain=input action=drop]
+    :if ([:len $inputDrop] > 0) do={
+        /ip firewall filter add action=accept chain=input protocol=udp dst-port=3784 src-address=<AWG_SERVER_IP>/32 dst-address=<AWG_MIKROTIK_IP>/32 in-interface=<MT_AWG_IF> comment="VPN_BFD_INPUT" place-before=($inputDrop->0)
+    } else={
+        /ip firewall filter add action=accept chain=input protocol=udp dst-port=3784 src-address=<AWG_SERVER_IP>/32 dst-address=<AWG_MIKROTIK_IP>/32 in-interface=<MT_AWG_IF> comment="VPN_BFD_INPUT"
+    }
+}
+
 /routing bfd configuration
 add interfaces=<MT_AWG_IF> addresses=<AWG_SERVER_IP>/32 min-rx=500ms min-tx=500ms multiplier=3
 
