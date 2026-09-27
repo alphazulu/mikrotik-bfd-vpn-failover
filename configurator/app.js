@@ -2536,12 +2536,14 @@ function clearAll() {
   $("show-secrets").checked = false;
   $("generate-psk").checked = true;
   $("generate-wgin").checked = false;
+  $("wg-exit-generate-psk").checked = true;
   updateSecretVisibility();
   setStatus("status-s1", "neutral", "—");
   setStatus("status-s2", "neutral", "—");
   setStatus("status-in", "neutral", "—");
   setStatus("status-wgin", "neutral", "—");
   setStatus("status-generated", "neutral", "—");
+  setStatus("status-wg-exits-generated", "neutral", "—");
   $("validation").innerHTML = "";
   $("result-tabs").innerHTML = "";
   $("preview").querySelector("code").textContent = "";
@@ -2553,6 +2555,7 @@ function clearAll() {
   renderExtraExits();
   updateMikrotikMode();
   updateConfigSourceMode();
+  updateWgExitSourceMode();
 }
 
 $("lang-ru").addEventListener("click", () => setLanguage("ru"));
@@ -2568,10 +2571,17 @@ $("parse-s2").addEventListener("click", () => importConfig("s2", $("paste-s2").v
 $("parse-in").addEventListener("click", () => importConfig("in", $("paste-in").value));
 $("parse-wgin").addEventListener("click", () => importConfig("wgin", $("paste-wgin").value));
 $("config-source-mode").addEventListener("change", updateConfigSourceMode);
+$("wg-exit-source-mode").addEventListener("change", updateWgExitSourceMode);
 $("generate-vpn-material").addEventListener("click", generateVpnMaterial);
+$("generate-wg-exits").addEventListener("click", () => generateInterserverWgMaterial());
 $("add-exit").addEventListener("click", () => {
-  state.extraExits.push(newExtraExit());
+  const exit = newExtraExit();
+  state.extraExits.push(exit);
+  if (($("wg-exit-source-mode").value || "import") === "generate") {
+    generateInterserverExit(exit.id);
+  }
   renderExtraExits();
+  updateSecretVisibility();
 });
 $("mt-policy-mode").addEventListener("change", updateMikrotikMode);
 
@@ -2594,3 +2604,4 @@ updateSecretVisibility();
 renderExtraExits();
 updateMikrotikMode();
 updateConfigSourceMode();
+updateWgExitSourceMode();
