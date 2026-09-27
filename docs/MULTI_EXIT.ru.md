@@ -96,6 +96,14 @@ Server2-C DOWN -> default исчезает только из table 202
 
 Отказ резервного Server2 не влияет на активный путь, пока более приоритетный выход остаётся доступен.
 
+## Firewall для BFD
+
+Каждая BFD-сессия — это локальный control-plane traffic, поэтому она должна быть разрешена в `INPUT`.
+
+Конфигуратор добавляет на Server1 отдельный UDP/3784 INPUT allow для каждого `wg-exit*`, ограниченный точными tunnel IP Server1/Server2. На каждом Server2 соответствующий `wg-exit.conf` добавляет INPUT allow для BFD от Server1, а также allow для публичного WireGuard listen port.
+
+Отказ одного backup-выхода не требует открывать UDP/3784 глобально: правила создаются отдельно для каждого интерфейса и peer.
+
 ## Conntrack
 
 `vpn-exit-monitor.sh` больше не реагирует на любое изменение любого BIRD route.
