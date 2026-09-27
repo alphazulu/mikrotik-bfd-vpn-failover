@@ -83,6 +83,27 @@ multiplier:       3
 
 This normally detects a complete failure in roughly 1.5 seconds.
 
+## BFD firewall path
+
+BFD packets terminate on the local routing process/router and therefore traverse the host/router `INPUT` chain, not `FORWARD`.
+
+This project uses direct/single-hop BFD only:
+
+```text
+MikroTik -> Server1 awg0       UDP dst 3784
+Server1  -> MikroTik           UDP dst 3784
+Server1  <-> each Server2      UDP dst 3784 inside wg-exit*
+```
+
+The generated firewall rules are deliberately narrow:
+
+- exact tunnel interface;
+- exact peer source address;
+- exact local destination address;
+- UDP destination port 3784.
+
+On Server2, the generated `wg-exit.conf` also permits the public WireGuard listen UDP port on the configured WAN interface. This is separate from BFD: WireGuard transport is outer/public traffic, while BFD/3784 is inner tunnel traffic delivered to BIRD.
+
 ## 3. NAT behavior
 
 ### Preferred path
