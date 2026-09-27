@@ -53,6 +53,21 @@ ip -ts monitor route
 journalctl -t vpn-exit-monitor -f
 ```
 
+## Health-check design note
+
+Do not replace the generated per-exit BFD checks with recursive routes to an arbitrary public probe host unless the network topology changes.
+
+Current project assumption:
+
+```text
+MikroTik -> Internet -> Server1
+Server1  -> Internet -> each Server2 public WireGuard endpoint
+```
+
+Because the real tunnel endpoints themselves are reached through the Internet, BFD tests the actual path that must be alive for the VPN exit to work. Recursive probes would add another failure domain rather than improve the signal for this deployment.
+
+If a future design introduces a private underlay to Server2, or requires explicit validation of NAT/public-destination reachability beyond the tunnel endpoint, add a separate end-to-end health check and document the new failure criterion.
+
 ## BFD diagnostics
 
 ```bash
