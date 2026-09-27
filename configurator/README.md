@@ -75,3 +75,20 @@ Server firewall generation is deny-by-default-friendly: every UDP service that m
 - BFD UDP/3784 is permitted only on the relevant tunnel interface and exact peer/local tunnel addresses.
 
 Server1 outbound wg-exit interfaces do not require a public listener rule because they initiate the WireGuard transport and do not define a fixed ListenPort in the generated config.
+
+
+## Import or generate
+
+The first step now has two modes:
+
+- **Import existing configs** — parses existing Server1/Server2 WireGuard, incoming AmneziaWG, and optional wg-in files and reuses their topology/key material.
+- **Generate new configs** — creates new X25519 WireGuard key pairs and optional 32-byte PSKs locally in the browser with `crypto.getRandomValues()`.
+
+Generation mode creates:
+- Server1/Server2 `wg-exit` key material for the primary and every additional Server2;
+- `server1/<awg-interface>.conf` plus `clients/<awg-interface>-client.conf`;
+- optional `server1/wg-in.conf` plus `clients/wg-in-client.conf`.
+
+AmneziaWG generation supports a compatibility-oriented legacy/1.x profile (`Jc/Jmin/Jmax/S1/S2/H1-H4`) and an AWG 2.x profile that additionally emits `S3/S4`. AWG 3.x HeaderProtectionKey/I1-I5 generation is not enabled by this mode yet.
+
+The Server1 public endpoint is required only for generated client configs.
