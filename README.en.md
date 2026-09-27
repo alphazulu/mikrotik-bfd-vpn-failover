@@ -48,7 +48,7 @@ The project now includes a local browser-based configurator:
 
 It can:
 
-- choose the config source: import existing `.conf` files or generate new AWG/WG configs entirely locally;
+- independently choose the source for incoming AWG/wg-in and inter-server `wg-exit`: import existing `.conf` files or generate locally;
 - import `wg-exit` configurations for Server1 and Server2;
 - add additional Server2 exits, assign a priority and dedicated Server1 WireGuard interface, and import both sides of each tunnel;
 - optionally import the incoming AWG Server1 configuration and a separate `wg-in.conf`;
