@@ -82,6 +82,14 @@ exit4_3 -> Linux table 202 -> wg-exit3
 
 Every default route is BFD-controlled, so each exit can independently appear or disappear without affecting the other tables.
 
+## BFD firewall
+
+Every BFD session is local control-plane traffic and therefore must be allowed in `INPUT`.
+
+The configurator adds one UDP/3784 INPUT allow on Server1 for every `wg-exit*`, constrained to the exact Server1/Server2 tunnel addresses. Each Server2 `wg-exit.conf` allows BFD from Server1 and also permits the public WireGuard listen port.
+
+There is no need to open UDP/3784 globally; every rule is scoped to the specific interface and peer.
+
 ## Conntrack
 
 The route monitor tracks the **selected exit**, not every BIRD event.
