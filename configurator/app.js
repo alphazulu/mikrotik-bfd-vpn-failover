@@ -1212,6 +1212,8 @@ function generateFiles() {
   const wgInAddress = value("wg-in-address");
   const wgInPort = value("wg-in-port");
   const wgInPrivate = value("wg-in-private");
+  const wgInPublic = value("wg-in-public");
+  const wgInPeerPrivate = value("wg-in-peer-private");
   const wgInPeerPublic = value("wg-in-peer-public");
   const wgInPeerAllowed = value("wg-in-peer-allowed");
   const wgInPsk = value("wg-in-psk");
