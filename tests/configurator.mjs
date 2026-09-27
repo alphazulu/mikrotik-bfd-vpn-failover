@@ -192,6 +192,8 @@ assert.match(files["server1/vpn-exit-monitor.sh"], /selected_exit\(\)/);
 assert.match(files["server1/vpn-exit-monitor.sh"], /Selected VPN exit changed/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-s 10.88.99.0\/24 -o eth0/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-s 10.88.100.0\/24 -o eth0/);
+assert.match(files["server1/vpn-failover-firewall.service"], /INPUT -i awg0 -p udp -s 10\.88\.99\.4\/32 -d 10\.88\.99\.1\/32 --dport 3784 .*vpn-failover-bfd/);
+assert.match(files["server1/vpn-failover-firewall.service"], /INPUT -i wg-exit -p udp -s 10\.77\.66\.2\/32 -d 10\.77\.66\.1\/32 --dport 3784 .*vpn-failover-bfd/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-i awg0 -o awg0 .* -j DROP/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-i awg0 .* -j ACCEPT/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-o awg0 .*--ctstate RELATED,ESTABLISHED.* -j ACCEPT/);
@@ -209,6 +211,8 @@ assert.match(files["server2/wg-exit.conf"], /-o %i -m conntrack --ctstate RELATE
 assert.match(files["server2/wg-exit.conf"], /-i %i -m comment --comment wg-exit-failover -j ACCEPT/);
 assert.match(files["server2/wg-exit.conf"], /-s 10.88.99.0\/24 -o eth0/);
 assert.match(files["server2/wg-exit.conf"], /-s 10.88.100.0\/24 -o eth0/);
+assert.match(files["server2/wg-exit.conf"], /INPUT -i eth0 -p udp --dport 51830 .*wg-exit-listen/);
+assert.match(files["server2/wg-exit.conf"], /INPUT -i %i -p udp -s 10\.77\.66\.1\/32 -d 10\.77\.66\.2\/32 --dport 3784 .*wg-exit-bfd/);
 
 assert.match(files["mikrotik/bfd-failover.rsc"], /address=10.88.99.4\/32 network=10.88.99.1/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /check-gateway=bfd/);
@@ -228,6 +232,8 @@ assert.match(files["mikrotik/bfd-failover.rsc"], /check-gateway=bfd comment="VPN
 assert.match(files["mikrotik/bfd-failover.rsc"], /action=fasttrack-connection/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /connection-mark=no-mark/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /in-interface-list=!WAN/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /chain=input protocol=udp dst-port=3784 src-address=10\.88\.99\.1\/32 dst-address=10\.88\.99\.4\/32 in-interface="wg-awg-proxy-1" comment="VPN_BFD_INPUT"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /place-before=\(\$inputDrop->0\)/);
 {
   const rsc = files["mikrotik/bfd-failover.rsc"];
   const tableNames = new Set(["main"]);
@@ -273,6 +279,8 @@ assert.match(multi["server1/wg-exit2.conf"], /Endpoint = 198\.51\.100\.20:51830/
 assert.match(multi["server2-2/wg-exit.conf"], /Address = 10\.77\.67\.2\/30/);
 assert.match(multi["server2-2/wg-exit.conf"], /AllowedIPs = 10\.77\.67\.1\/32, 10\.88\.99\.0\/24, 10\.88\.100\.0\/24/);
 assert.match(multi["server2-2/bird.conf"], /neighbor 10\.77\.67\.1 dev "wg-exit" local 10\.77\.67\.2/);
+assert.match(multi["server2-2/wg-exit.conf"], /INPUT -i %i -p udp -s 10\.77\.67\.1\/32 -d 10\.77\.67\.2\/32 --dport 3784 .*wg-exit-bfd/);
+assert.match(multi["server1/vpn-failover-firewall.service"], /INPUT -i wg-exit2 -p udp -s 10\.77\.67\.2\/32 -d 10\.77\.67\.1\/32 --dport 3784 .*vpn-failover-bfd/);
 
 assert.match(multi["server1/bird.conf"], /ipv4 table exit4_1;/);
 assert.match(multi["server1/bird.conf"], /ipv4 table exit4_2;/);
@@ -294,7 +302,8 @@ const multiValidationFiles = {
   server2Bird: multi["server2-2/bird.conf"],
   server1Wg: multi["server1/wg-exit2.conf"],
   server2Wg: multi["server2-2/wg-exit.conf"],
-  monitor: multi["server1/vpn-exit-monitor.sh"]
+  monitor: multi["server1/vpn-exit-monitor.sh"],
+  firewallService: multi["server1/vpn-failover-firewall.service"]
 };
 
 // Lower numeric priority must become the first Linux policy table.
@@ -378,10 +387,13 @@ fs.writeFileSync(path.join(out, "server1-wg-exit.conf"), files["server1/wg-exit.
 fs.writeFileSync(path.join(out, "server2-wg-exit.conf"), files["server2/wg-exit.conf"]);
 fs.writeFileSync(path.join(out, "server1-wg-in.conf"), files["server1/wg-in.conf"]);
 fs.writeFileSync(path.join(out, "vpn-exit-monitor.sh"), files["server1/vpn-exit-monitor.sh"]);
+fs.writeFileSync(path.join(out, "vpn-failover-firewall.service"), files["server1/vpn-failover-firewall.service"]);
+fs.writeFileSync(path.join(out, "awg-policy-routing.service"), files["server1/awg-policy-routing.service"]);
 fs.writeFileSync(path.join(out, "multi-server1-bird.conf"), multiValidationFiles.server1Bird);
 fs.writeFileSync(path.join(out, "multi-server2-bird.conf"), multiValidationFiles.server2Bird);
 fs.writeFileSync(path.join(out, "multi-server1-wg-exit2.conf"), multiValidationFiles.server1Wg);
 fs.writeFileSync(path.join(out, "multi-server2-wg-exit.conf"), multiValidationFiles.server2Wg);
 fs.writeFileSync(path.join(out, "multi-vpn-exit-monitor.sh"), multiValidationFiles.monitor);
+fs.writeFileSync(path.join(out, "multi-vpn-failover-firewall.service"), multiValidationFiles.firewallService);
 
 console.log("Configurator unit/security tests: OK");
