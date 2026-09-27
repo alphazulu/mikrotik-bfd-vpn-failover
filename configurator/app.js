@@ -1512,7 +1512,7 @@ function generateFiles() {
       .map((key) => key + " = " + awg3Params[key])
       .join("\n");
     const awgClientIBlock = awgClientI ? "\n" + awgClientI : "";
-    const awgPersistentKeepalive = awgProfile === "awg31" ? "25-35" : "25";
+    const awgPersistentKeepalive = isAwg3 ? "25-35" : "25";
 
     files["server1/" + awgIf + ".conf"] =
 `[Interface]
