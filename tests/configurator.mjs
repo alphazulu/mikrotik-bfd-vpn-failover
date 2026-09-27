@@ -10,6 +10,7 @@ new Function("document", "Node", "navigator", "location", "URL", "Blob", "TextEn
 
 assert.match(html, /connect-src 'none'/, "CSP must block application network connections");
 assert.match(html, /id="mt-route-table"[^>]*value="VPN"/, "Policy-routing UI must default to a dedicated VPN table");
+assert.match(html, /option value="awg31" selected/, "AWG generation must default to 3.1");
 assert.doesNotMatch(src, /\bfetch\s*\(/, "Runtime must not call fetch()");
 assert.doesNotMatch(src, /new\s+XMLHttpRequest|XMLHttpRequest\s*\(/, "Runtime must not use XMLHttpRequest");
 assert.doesNotMatch(src, /new\s+WebSocket|WebSocket\s*\(/, "Runtime must not use WebSocket");
@@ -385,7 +386,7 @@ assert.equal(
 
 element("config-source-mode").value = "generate";
 element("s1-public-endpoint").value = "203.0.113.10";
-element("awg-profile").value = "awg2";
+element("awg-profile").value = "awg31";
 element("generate-psk").checked = true;
 element("generate-wgin").checked = true;
 api.generateVpnMaterial();
@@ -404,8 +405,26 @@ api.generateFiles();
 
 const generatedModeFiles = api.state.generated;
 assert.match(generatedModeFiles["server1/awg0.conf"], /ListenPort = 51820/);
-assert.match(generatedModeFiles["server1/awg0.conf"], /S3 = \d+/);
-assert.match(generatedModeFiles["server1/awg0.conf"], /S4 = \d+/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /S1 = 12/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /S2 = 12/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /S3 = 12/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /S4 = 12/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /H1 = 1/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /H2 = 2/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /H3 = 3/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /H4 = 4/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /HeaderProtectionKey = [A-Za-z0-9+/]{43}=/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /ContentPaddingAddition = 10-100/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /RekeyAfterTime = 100-120/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /RekeyTimeout = 3-7/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /RejectAfterTime = 150-180/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /KeepaliveTimeout = 5-15/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /MaxHandshakeAttempts = 15-20/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /RandomTrailers = on/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /DisableCookies = on/);
+assert.doesNotMatch(generatedModeFiles["server1/awg0.conf"], /^I1\s*=/m, "Server config should not emit CPS I-packets");
+assert.match(generatedModeFiles["clients/awg0-client.conf"], /^I1 = <r 2>/m);
+assert.match(generatedModeFiles["clients/awg0-client.conf"], /PersistentKeepalive = 25-35/);
 assert.match(generatedModeFiles["server1/awg0.conf"], /AllowedIPs = 10\.88\.99\.4\/32/);
 assert.match(generatedModeFiles["clients/awg0-client.conf"], /Endpoint = 203\.0\.113\.10:51820/);
 assert.match(generatedModeFiles["clients/awg0-client.conf"], /AllowedIPs = 0\.0\.0\.0\/0/);
@@ -413,6 +432,20 @@ assert.match(generatedModeFiles["clients/wg-in-client.conf"], /Endpoint = 203\.0
 assert.match(generatedModeFiles["clients/wg-in-client.conf"], /Address = 10\.88\.100\.2\/32/);
 assert.match(generatedModeFiles["server1/vpn-failover-firewall.service"], /--dport 51820 .*vpn-failover-listener/);
 assert.match(generatedModeFiles["server1/vpn-failover-firewall.service"], /--dport 51999 .*vpn-failover-listener/);
+
+// AWG 3.0 keeps Header Protection/timing parameters but omits 3.1-only toggles.
+element("awg-profile").value = "awg3";
+api.generateVpnMaterial();
+assert.equal(api.validate().ok, true, "AWG 3.0 generation must validate");
+api.generateFiles();
+const awg30Server = api.state.generated["server1/awg0.conf"];
+const awg30Client = api.state.generated["clients/awg0-client.conf"];
+assert.match(awg30Server, /HeaderProtectionKey = [A-Za-z0-9+/]{43}=/);
+assert.match(awg30Server, /ContentPaddingAddition = 10-100/);
+assert.doesNotMatch(awg30Server, /RandomTrailers =/);
+assert.doesNotMatch(awg30Server, /DisableCookies =/);
+assert.match(awg30Client, /PersistentKeepalive = 25/);
+assert.doesNotMatch(awg30Client, /PersistentKeepalive = 25-35/);
 
 element("config-source-mode").value = "import";
 
