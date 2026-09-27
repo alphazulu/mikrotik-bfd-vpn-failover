@@ -31,11 +31,11 @@
     </section>
 
     <section class="card">
-      <h2 data-ru="1. Источник WireGuard / AmneziaWG конфигураций" data-en="1. WireGuard / AmneziaWG configuration source">1. Источник WireGuard / AmneziaWG конфигураций</h2>
+      <h2 data-ru="1. Источники VPN-конфигураций" data-en="1. VPN configuration sources">1. Источники VPN-конфигураций</h2>
       <p class="hint" data-ru="Можно импортировать существующие .conf либо создать новые ключи и конфиги полностью локально в браузере." data-en="Import existing .conf files or create new keys and configs entirely locally in the browser.">Можно импортировать существующие .conf либо создать новые ключи и конфиги полностью локально в браузере.</p>
 
       <div class="grid form-grid">
-        <label data-ru="Режим" data-en="Mode">Режим
+        <label data-ru="Входящие AWG / wg-in" data-en="Incoming AWG / wg-in">Входящие AWG / wg-in
           <select id="config-source-mode">
             <option value="import" data-ru="Импортировать готовые конфиги" data-en="Import existing configs">Импортировать готовые конфиги</option>
             <option value="generate" data-ru="Сгенерировать новые AWG/WG конфиги" data-en="Generate new AWG/WG configs">Сгенерировать новые AWG/WG конфиги</option>
@@ -45,7 +45,7 @@
 
       <div id="import-configs">
       <div class="grid three">
-        <div class="import-box">
+        <div class="import-box wg-exit-import-box">
           <h3>Server1 — wg-exit</h3>
           <input id="file-s1" type="file" accept=".conf,.txt">
           <textarea id="paste-s1" rows="8" spellcheck="false" data-placeholder-ru="или вставьте wg-exit.conf Server1 сюда" data-placeholder-en="or paste Server1 wg-exit.conf here" placeholder="или вставьте wg-exit.conf Server1 сюда"></textarea>
@@ -53,7 +53,7 @@
           <div id="status-s1" class="status neutral">—</div>
         </div>
 
-        <div class="import-box">
+        <div class="import-box wg-exit-import-box">
           <h3>Server2 — wg-exit</h3>
           <input id="file-s2" type="file" accept=".conf,.txt">
           <textarea id="paste-s2" rows="8" spellcheck="false" data-placeholder-ru="или вставьте wg-exit.conf Server2 сюда" data-placeholder-en="or paste Server2 wg-exit.conf here" placeholder="или вставьте wg-exit.conf Server2 сюда"></textarea>
@@ -61,7 +61,7 @@
           <div id="status-s2" class="status neutral">—</div>
         </div>
 
-        <div class="import-box">
+        <div class="import-box incoming-import-box">
           <h3 data-ru="Server1 — входящий AmneziaWG, опционально" data-en="Server1 — incoming AmneziaWG, optional">Server1 — входящий AmneziaWG, опционально</h3>
           <input id="file-in" type="file" accept=".conf,.txt">
           <textarea id="paste-in" rows="8" spellcheck="false" data-placeholder-ru="импорт для определения AWG-адреса Server1 и MikroTik peer /32" data-placeholder-en="import to infer Server1 AWG address and MikroTik peer /32" placeholder="импорт для определения AWG-адреса Server1 и MikroTik peer /32"></textarea>
@@ -69,7 +69,7 @@
           <div id="status-in" class="status neutral">—</div>
         </div>
 
-        <div class="import-box">
+        <div class="import-box incoming-import-box">
           <h3 data-ru="Server1 — дополнительный wg-in, опционально" data-en="Server1 — additional wg-in, optional">Server1 — дополнительный wg-in, опционально</h3>
           <input id="file-wgin" type="file" accept=".conf,.txt">
           <textarea id="paste-wgin" rows="8" spellcheck="false" data-placeholder-ru="импорт /etc/wireguard/wg-in.conf" data-placeholder-en="import /etc/wireguard/wg-in.conf" placeholder="импорт /etc/wireguard/wg-in.conf"></textarea>
@@ -165,6 +165,27 @@
       <h2 data-ru="2. Параметры схемы" data-en="2. Topology parameters">2. Параметры схемы</h2>
 
       <h3 data-ru="Межсерверный wg-exit" data-en="Inter-server wg-exit">Межсерверный wg-exit</h3>
+
+      <div class="import-box generator-box">
+        <div class="grid form-grid">
+          <label data-ru="Источник межсерверных WG" data-en="Inter-server WG source">Источник межсерверных WG
+            <select id="wg-exit-source-mode">
+              <option value="import" data-ru="Импортировать готовые wg-exit конфиги" data-en="Import existing wg-exit configs">Импортировать готовые wg-exit конфиги</option>
+              <option value="generate" data-ru="Сгенерировать wg-exit для Server1 ↔ Server2" data-en="Generate Server1 ↔ Server2 wg-exit configs">Сгенерировать wg-exit для Server1 ↔ Server2</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="wg-exit-generate-controls" class="hidden">
+          <label class="check"><input id="wg-exit-generate-psk" type="checkbox" checked><span data-ru="Генерировать отдельный PresharedKey для каждого межсерверного туннеля" data-en="Generate a separate PresharedKey for every inter-server tunnel">Генерировать отдельный PresharedKey для каждого межсерверного туннеля</span></label>
+          <div class="actions">
+            <button id="generate-wg-exits" type="button" data-ru="Сгенерировать все межсерверные WG" data-en="Generate all inter-server WG tunnels">Сгенерировать все межсерверные WG</button>
+          </div>
+          <p class="hint" data-ru="Для каждого Server2 создаются отдельные X25519 key pair, optional PSK и, если адреса пусты, отдельная /30 transfer subnet. Публичный endpoint каждого Server2 задаётся вручную." data-en="Each Server2 gets independent X25519 key pairs, an optional PSK, and a separate /30 transfer subnet when addresses are empty. Enter each Server2 public endpoint manually.">Для каждого Server2 создаются отдельные X25519 key pair, optional PSK и, если адреса пусты, отдельная /30 transfer subnet. Публичный endpoint каждого Server2 задаётся вручную.</p>
+          <div id="status-wg-exits-generated" class="status neutral">—</div>
+        </div>
+      </div>
+
       <div class="grid form-grid">
         <label>Server1 wg-exit Address<input id="s1-address" type="text" placeholder="10.0.0.1/30"></label>
         <label>Server2 wg-exit Address<input id="s2-address" type="text" placeholder="10.0.0.2/30"></label>
