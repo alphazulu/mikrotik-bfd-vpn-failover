@@ -47,6 +47,21 @@ The UI offers two mutually exclusive modes:
 Direct-route mode deliberately omits selective MikroTik conntrack cleanup because there is no connection mark to target.
 
 
+## Health-check model
+
+This configurator intentionally generates **BFD-based liveness**, not recursive routes to external ping targets.
+
+Project topology assumption:
+
+```text
+MikroTik -> public Internet -> Server1
+Server1  -> public Internet -> Server2 public WG endpoint
+```
+
+The BFD session for each `wg-exit*` therefore rides over the actual Internet/WireGuard path used to reach that Server2. If that path is unavailable, BFD goes DOWN and BIRD withdraws that exit's default. With multiple Server2 nodes, every exit has its own independent BFD session.
+
+**Maintainer/agent note:** do not add a second recursive-route/public-probe health mechanism as a supposed fix for "Server2 Internet liveness" under the current topology. It would introduce a separate third-party probe and a different failure domain. Add such an end-to-end probe only if the topology changes, for example if Server2 becomes reachable through a private underlay or explicit NAT/arbitrary-public-destination validation becomes a requirement.
+
 ## Multiple Server2 exits
 
 The configurator can add multiple exit Server2 nodes.
