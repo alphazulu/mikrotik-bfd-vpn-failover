@@ -12,10 +12,12 @@
 1. [Архитектура](docs/ARCHITECTURE.md)
 2. [Установка и настройка](docs/INSTALL.md)
 3. [Эксплуатация и тестирование](docs/OPERATIONS.md)
-4. [Несколько Server2 и приоритетный failover](docs/MULTI_EXIT.ru.md)
-5. [Multiple Server2 exits and prioritized failover](docs/MULTI_EXIT.md)
-6. [Переменные и placeholders](docs/VARIABLES.md)
-7. [Безопасность публикации](docs/SECURITY.md)
+4. [AWG 3.0/3.1 — генерация](docs/AWG3.ru.md)
+5. [AWG 3.0/3.1 generation](docs/AWG3.md)
+6. [Несколько Server2 и приоритетный failover](docs/MULTI_EXIT.ru.md)
+7. [Multiple Server2 exits and prioritized failover](docs/MULTI_EXIT.md)
+8. [Переменные и placeholders](docs/VARIABLES.md)
+9. [Безопасность публикации](docs/SECURITY.md)
 
 Готовые обезличенные примеры конфигураций находятся в каталоге `configs/`.
 
