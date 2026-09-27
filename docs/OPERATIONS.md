@@ -155,3 +155,16 @@ Then stop `wg-exit` on the most preferred Server2. New sessions should move to t
 Restore the Server2 nodes in a non-priority order as well. The selected path must always converge to the lowest numeric priority currently available.
 
 A backup Server2 going DOWN/UP while a higher-priority exit remains active should not produce a `Selected VPN exit changed` log entry and should not flush VPN conntrack.
+
+
+## RouterOS 7.24.x scheduler note
+
+The generated `VPN-BFD-Conntrack` watcher intentionally does not use a bare `:return`.
+
+On RouterOS 7.24.x, `:return` requires a value. A bare `:return` in a scheduler-run script can log:
+
+```text
+Script Error: missing value(s) of argument(s) value
+```
+
+The watcher therefore uses nested `:if ... else={...}` blocks for early-exit logic instead of `:return`. Initial state is recorded without flushing conntrack, and later runs flush only when the monitored route state actually changes.
