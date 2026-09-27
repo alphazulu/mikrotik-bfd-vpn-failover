@@ -48,10 +48,13 @@ Server1
 
 Он умеет:
 
+- выбирать источник конфигураций: импорт готовых `.conf` или полностью локальная генерация новых AWG/WG конфигов;
 - импортировать `wg-exit` конфигурации Server1 и Server2;
 - добавлять дополнительные Server2, задавать каждому priority, отдельный Server1 WireGuard interface и импортировать обе стороны его туннеля;
 - опционально импортировать входящий AWG-конфиг Server1 и отдельный `wg-in.conf`;
 - автоматически извлекать внутренние tunnel IP, endpoint, UDP listen ports (включая Server1 AWG), WireGuard keys, optional `PresharedKey` и MTU;
+- локально генерировать X25519 key pairs и 32-byte PSK через browser CSPRNG;
+- генерировать пару AmneziaWG server/client (legacy/1.x или AWG 2.x с S3/S4), `wg-exit` для всех Server2 и optional `wg-in` server/client;
 - проверять, что Server1/Server2 находятся в одной wg-exit подсети;
 - проверять client subnet и BFD-параметры;
 - генерировать готовые конфиги Server1, Server2 и MikroTik;
