@@ -272,17 +272,26 @@ This design uses single-hop BFD, therefore only UDP destination port `3784` is a
 
 The generator creates narrow source/destination/interface rules rather than opening UDP/3784 globally.
 
-## Why BFD instead of ping/Netwatch
+## Why BFD instead of ping/Netwatch or recursive routes
+
+**Important design assumption of this project:** Server1 and every Server2 are reached through the public Internet. Each inter-server `wg-exit` also terminates on the public Internet endpoint of its Server2; there is no separate private underlay carrying that tunnel.
+
+For this topology, an established BFD session therefore means that the components required by the real forwarding path are alive at the same time: the Internet path to the remote server, WireGuard transport, the tunnel interface, the local firewall path, and the BIRD peer. If Internet reachability to a Server2 disappears, its WireGuard/BFD path also fails and BIRD withdraws that exit's default route.
+
+This is why the project **intentionally does not use recursive routes with an external ping target** as its primary health check. Such a probe would test an additional third-party address and introduce another dependency, while BFD tests the actual Internet/WireGuard path used by the exit.
 
 BFD is the primary liveness mechanism because it:
 
 - supports short detection intervals;
 - does not depend on a third-party Internet host;
 - monitors the exact tunnel peer of interest;
+- independently monitors every `wg-exit*` when multiple Server2 nodes are configured;
 - integrates directly with BIRD on Linux;
 - can be used by MikroTik with `check-gateway=bfd`.
 
-A separate Netwatch or ping watchdog is not required for this design.
+A separate Netwatch, recursive default through a public probe host, or ping watchdog is not required for **this topology**.
+
+> This is a project design assumption, not a universal property of BFD. If a Server2 is later reachable through a private underlay, or if NAT/arbitrary external-destination reachability must be tested separately, an additional end-to-end health check may be appropriate.
 
 ## Repository layout
 
