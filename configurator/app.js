@@ -1015,8 +1015,9 @@ function validate() {
     }
 
     const awg = awgParametersFromFields();
-    const numericKeys = ["Jc", "Jmin", "Jmax", "S1", "S2", "H1", "H2", "H3", "H4"];
-    if ((value("awg-profile") || "legacy") === "awg2") numericKeys.push("S3", "S4");
+    const profile = value("awg-profile") || "awg31";
+    const isAwg3 = profile === "awg3" || profile === "awg31";
+    const numericKeys = ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4"];
     const nums = {};
     for (const key of numericKeys) {
       const n = Number(awg[key]);
@@ -1032,6 +1033,37 @@ function validate() {
     const headers = ["H1", "H2", "H3", "H4"].map((k) => String(awg[k] || ""));
     if (headers.every(Boolean) && new Set(headers).size !== headers.length) {
       add("bad", "AWG H1-H4 должны быть уникальны", "AWG H1-H4 must be unique");
+    }
+
+    if (isAwg3) {
+      const awg3 = awg3ParametersFromFields();
+      if (!validWgKey(awg3.HeaderProtectionKey)) {
+        add("bad", "AWG 3.x требует 32-byte HeaderProtectionKey в base64", "AWG 3.x requires a 32-byte base64 HeaderProtectionKey");
+      }
+      for (const key of ["ContentPaddingAddition", "RekeyAfterTime", "RekeyTimeout", "RejectAfterTime", "KeepaliveTimeout", "MaxHandshakeAttempts"]) {
+        if (!validU16Range(awg3[key])) {
+          add("bad", "AWG 3.x " + key + " должен быть uint16 или диапазоном a-b", "AWG 3.x " + key + " must be a uint16 value or a-b range");
+        }
+      }
+      for (const key of ["S1", "S2", "S3", "S4"]) {
+        if (!Number.isInteger(nums[key]) || nums[key] < 12) {
+          add("bad", "AWG 3.x с HeaderProtectionKey требует " + key + " >= 12", "AWG 3.x with HeaderProtectionKey requires " + key + " >= 12");
+        }
+      }
+      if (nums.H1 !== 1 || nums.H2 !== 2 || nums.H3 !== 3 || nums.H4 !== 4) {
+        add("bad", "Для AWG 3.x с Header Protection используйте H1=1 H2=2 H3=3 H4=4", "For AWG 3.x with Header Protection use H1=1 H2=2 H3=3 H4=4");
+      }
+      if (profile === "awg31") {
+        if (awg3.RandomTrailers !== "on" && awg3.RandomTrailers !== "off") {
+          add("bad", "AWG 3.1 RandomTrailers должен быть on/off", "AWG 3.1 RandomTrailers must be on/off");
+        }
+        if (awg3.DisableCookies !== "on" && awg3.DisableCookies !== "off") {
+          add("bad", "AWG 3.1 DisableCookies должен быть on/off", "AWG 3.1 DisableCookies must be on/off");
+        }
+        if (awg3.RandomTrailers === "on" && !(nums.S1 === nums.S2 && nums.S2 === nums.S3 && nums.S3 === nums.S4)) {
+          add("warn", "Для AWG 3.1 + RandomTrailers рекомендуется одинаковый S1-S4", "AWG 3.1 + RandomTrailers is recommended to use equal S1-S4");
+        }
+      }
     }
 
     if ($("generate-wgin").checked) {
@@ -1305,6 +1337,7 @@ function generateFiles() {
   const awgPeerPublic = value("awg-peer-public");
   const awgPsk = value("awg-psk");
   const awgParams = awgParametersFromFields();
+  const awg3Params = awg3ParametersFromFields();
 
   const awgServer = value("awg-server");
   const awgPort = value("awg-port");
@@ -1439,19 +1472,42 @@ function generateFiles() {
     const awgNetParsed = parseCidr(awgNet);
     const awgPrefix = awgNetParsed ? awgNetParsed.prefix : 24;
     const awgPskLine = awgPsk ? "\nPresharedKey = " + awgPsk : "";
-    const awgS34 = awgProfile === "awg2"
-      ? "\nS3 = " + awgParams.S3 + "\nS4 = " + awgParams.S4
-      : "";
-    const awgObfuscation =
+    const isAwg3 = awgProfile === "awg3" || awgProfile === "awg31";
+    let awgObfuscation =
       "Jc = " + awgParams.Jc + "\n" +
       "Jmin = " + awgParams.Jmin + "\n" +
       "Jmax = " + awgParams.Jmax + "\n" +
       "S1 = " + awgParams.S1 + "\n" +
-      "S2 = " + awgParams.S2 + awgS34 + "\n" +
+      "S2 = " + awgParams.S2 + "\n" +
+      "S3 = " + awgParams.S3 + "\n" +
+      "S4 = " + awgParams.S4 + "\n" +
       "H1 = " + awgParams.H1 + "\n" +
       "H2 = " + awgParams.H2 + "\n" +
       "H3 = " + awgParams.H3 + "\n" +
       "H4 = " + awgParams.H4;
+
+    if (isAwg3) {
+      awgObfuscation +=
+        "\nHeaderProtectionKey = " + awg3Params.HeaderProtectionKey +
+        "\nContentPaddingAddition = " + awg3Params.ContentPaddingAddition +
+        "\nRekeyAfterTime = " + awg3Params.RekeyAfterTime +
+        "\nRekeyTimeout = " + awg3Params.RekeyTimeout +
+        "\nRejectAfterTime = " + awg3Params.RejectAfterTime +
+        "\nKeepaliveTimeout = " + awg3Params.KeepaliveTimeout +
+        "\nMaxHandshakeAttempts = " + awg3Params.MaxHandshakeAttempts;
+      if (awgProfile === "awg31") {
+        awgObfuscation +=
+          "\nRandomTrailers = " + awg3Params.RandomTrailers +
+          "\nDisableCookies = " + awg3Params.DisableCookies;
+      }
+    }
+
+    const awgClientI = ["I1", "I2", "I3", "I4", "I5"]
+      .filter((key) => awg3Params[key])
+      .map((key) => key + " = " + awg3Params[key])
+      .join("\n");
+    const awgClientIBlock = awgClientI ? "\n" + awgClientI : "";
+    const awgPersistentKeepalive = isAwg3 ? "25-35" : "25";
 
     files["server1/" + awgIf + ".conf"] =
 `[Interface]
@@ -1471,13 +1527,13 @@ AllowedIPs = ${awgMt}/32
 Address = ${awgMt}/32
 PrivateKey = ${awgPeerPrivate}
 MTU = ${awgMtu}
-${awgObfuscation}
+${awgObfuscation}${awgClientIBlock}
 
 [Peer]
 PublicKey = ${awgPublic}${awgPskLine}
 Endpoint = ${s1PublicEndpoint}:${awgPort}
 AllowedIPs = 0.0.0.0/0
-PersistentKeepalive = 25
+PersistentKeepalive = ${awgPersistentKeepalive}
 `;
   }
 
@@ -2235,7 +2291,7 @@ function renderResults() {
 function updateSecretVisibility() {
   const show = $("show-secrets").checked;
   ["s1-private", "s1-public", "s2-private", "s2-public", "s1-psk", "s2-psk",
-   "awg-private", "awg-public", "awg-peer-private", "awg-peer-public", "awg-psk",
+   "awg-private", "awg-public", "awg-peer-private", "awg-peer-public", "awg-psk", "awg-header-protection-key",
    "wg-in-private", "wg-in-public", "wg-in-peer-private", "wg-in-peer-public", "wg-in-psk"].forEach((id) => {
     $(id).type = show ? "text" : "password";
   });
@@ -2375,6 +2431,9 @@ function clearAll() {
    "awg-private", "awg-public", "awg-peer-private", "awg-peer-public", "awg-psk",
    "awg-jc", "awg-jmin", "awg-jmax", "awg-s1", "awg-s2", "awg-s3", "awg-s4",
    "awg-h1", "awg-h2", "awg-h3", "awg-h4",
+   "awg-header-protection-key", "awg-content-padding", "awg-rekey-after", "awg-rekey-timeout",
+   "awg-reject-after", "awg-keepalive-timeout", "awg-max-handshake-attempts",
+   "awg-random-trailers", "awg-disable-cookies", "awg-i1", "awg-i2", "awg-i3", "awg-i4", "awg-i5",
    "wg-in-private", "wg-in-public", "wg-in-peer-private", "wg-in-peer-public", "wg-in-psk", "wg-in-address", "wg-in-port",
    "wg-in-peer-allowed", "s1-mtu", "s2-mtu", "awg-server", "awg-port", "awg-mt", "awg-net",
    "wg-in-net", "mt-address-lists", "mt-direct-routes"].forEach((id) => { $(id).value = ""; });
