@@ -1416,27 +1416,26 @@ add check-gateway=bfd comment="VPN_BFD_PRIMARY" disabled=no distance=1 dst-addre
 add name=VPN-BFD-Conntrack policy=read,write,test source={
     :global vpnBfdLastState
 
-    :local routeId [/ip route find where comment="VPN_BFD_PRIMARY"]
-    :if ([:len $routeId] = 0) do={
+    :local routeIds [/ip route find where comment="VPN_BFD_PRIMARY"]
+    :if ([:len $routeIds] = 0) do={
         :log warning "VPN-BFD: monitored route not found"
-        :return
-    }
+    } else={
+        :local routeId [:pick $routeIds 0]
+        :local routeActive [/ip route get $routeId active]
+        :local currentState "DOWN"
+        :if ($routeActive = true) do={ :set currentState "UP" }
 
-    :local routeActive [/ip route get $routeId active]
-    :local currentState "DOWN"
-    :if ($routeActive = true) do={ :set currentState "UP" }
-
-    :if ([:typeof $vpnBfdLastState] = "nothing") do={
-        :set vpnBfdLastState $currentState
-        :log info ("VPN-BFD: initial state = " . $currentState)
-        :return
-    }
-
-    :if ($currentState != $vpnBfdLastState) do={
-        :local connCount [:len [/ip firewall connection find where connection-mark=${qRouter(connmark)}]]
-        :log warning ("VPN-BFD: state changed " . $vpnBfdLastState . " -> " . $currentState . ", removing " . $connCount . " connections")
-        /ip firewall connection remove [find where connection-mark=${qRouter(connmark)}]
-        :set vpnBfdLastState $currentState
+        :if ([:typeof $vpnBfdLastState] = "nothing") do={
+            :set vpnBfdLastState $currentState
+            :log info ("VPN-BFD: initial state = " . $currentState)
+        } else={
+            :if ($currentState != $vpnBfdLastState) do={
+                :local connCount [:len [/ip firewall connection find where connection-mark=${qRouter(connmark)}]]
+                :log warning ("VPN-BFD: state changed " . $vpnBfdLastState . " -> " . $currentState . ", removing " . $connCount . " connections")
+                /ip firewall connection remove [find where connection-mark=${qRouter(connmark)}]
+                :set vpnBfdLastState $currentState
+            }
+        }
     }
 }
 
