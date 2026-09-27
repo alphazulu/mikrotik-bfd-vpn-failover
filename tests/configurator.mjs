@@ -444,8 +444,7 @@ assert.match(awg30Server, /HeaderProtectionKey = [A-Za-z0-9+/]{43}=/);
 assert.match(awg30Server, /ContentPaddingAddition = 10-100/);
 assert.doesNotMatch(awg30Server, /RandomTrailers =/);
 assert.doesNotMatch(awg30Server, /DisableCookies =/);
-assert.match(awg30Client, /PersistentKeepalive = 25/);
-assert.doesNotMatch(awg30Client, /PersistentKeepalive = 25-35/);
+assert.match(awg30Client, /PersistentKeepalive = 25-35/);
 
 element("config-source-mode").value = "import";
 
