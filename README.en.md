@@ -63,6 +63,14 @@ It can:
 - download individual files or the complete generated set as a `.tar`;
 - keep source-specific Server2 NAT/forwarding in `wg-exit.conf` and Server1 fallback NAT in a dedicated systemd unit.
 
+### AWG 3.0 / 3.1
+
+Generate mode defaults to **AWG 3.1**. Header Protection uses a dedicated 32-byte `HeaderProtectionKey`, equal `S1-S4=12`, and compatibility headers `H1=1, H2=2, H3=3, H4=4`. This follows the current AmneziaWG guidance for Header Protection and avoids the known ranged-H + RandomTrailers classifier issue.
+
+The AWG 3.0 profile emits Header Protection plus timing/padding parameters but omits the 3.1-only `RandomTrailers` / `DisableCookies` toggles. AWG 3.1 adds those toggles and uses the current self-hosted defaults.
+
+See [AWG 3.0/3.1 generation](docs/AWG3.md).
+
 ### Multiple Server2 exits
 
 The configurator supports any practical number of exit Server2 nodes. Each exit gets a separate WireGuard interface on Server1 and its own Linux routing table. A lower `priority` number means a more preferred exit.
