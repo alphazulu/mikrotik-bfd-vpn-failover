@@ -1007,6 +1007,8 @@ function validate() {
   const wgInAddress = value("wg-in-address");
   const wgInPort = value("wg-in-port");
   const wgInPrivate = value("wg-in-private");
+  const wgInPublic = value("wg-in-public");
+  const wgInPeerPrivate = value("wg-in-peer-private");
   const wgInPeerPublic = value("wg-in-peer-public");
   const wgInPeerAllowed = value("wg-in-peer-allowed");
   const wgInPsk = value("wg-in-psk");
@@ -1191,6 +1193,17 @@ function generateFiles() {
   const port = value("wg-port");
   const s1Wan = value("s1-wan");
   const s2Wan = value("s2-wan");
+  const sourceMode = value("config-source-mode") || "import";
+  const s1PublicEndpoint = value("s1-public-endpoint");
+  const awgProfile = value("awg-profile") || "legacy";
+  const awgMtu = value("awg-mtu") || "1280";
+  const awgPrivate = value("awg-private");
+  const awgPublic = value("awg-public");
+  const awgPeerPrivate = value("awg-peer-private");
+  const awgPeerPublic = value("awg-peer-public");
+  const awgPsk = value("awg-psk");
+  const awgParams = awgParametersFromFields();
+
   const awgServer = value("awg-server");
   const awgPort = value("awg-port");
   const awgMt = value("awg-mt");
@@ -1318,6 +1331,52 @@ function generateFiles() {
 
   const files = {};
 
+  if (sourceMode === "generate") {
+    const awgNetParsed = parseCidr(awgNet);
+    const awgPrefix = awgNetParsed ? awgNetParsed.prefix : 24;
+    const awgPskLine = awgPsk ? "\nPresharedKey = " + awgPsk : "";
+    const awgS34 = awgProfile === "awg2"
+      ? "\nS3 = " + awgParams.S3 + "\nS4 = " + awgParams.S4
+      : "";
+    const awgObfuscation =
+      "Jc = " + awgParams.Jc + "\n" +
+      "Jmin = " + awgParams.Jmin + "\n" +
+      "Jmax = " + awgParams.Jmax + "\n" +
+      "S1 = " + awgParams.S1 + "\n" +
+      "S2 = " + awgParams.S2 + awgS34 + "\n" +
+      "H1 = " + awgParams.H1 + "\n" +
+      "H2 = " + awgParams.H2 + "\n" +
+      "H3 = " + awgParams.H3 + "\n" +
+      "H4 = " + awgParams.H4;
+
+    files["server1/" + awgIf + ".conf"] =
+`[Interface]
+Address = ${awgServer}/${awgPrefix}
+ListenPort = ${awgPort}
+PrivateKey = ${awgPrivate}
+MTU = ${awgMtu}
+${awgObfuscation}
+
+[Peer]
+PublicKey = ${awgPeerPublic}${awgPskLine}
+AllowedIPs = ${awgMt}/32
+`;
+
+    files["clients/" + awgIf + "-client.conf"] =
+`[Interface]
+Address = ${awgMt}/32
+PrivateKey = ${awgPeerPrivate}
+MTU = ${awgMtu}
+${awgObfuscation}
+
+[Peer]
+PublicKey = ${awgPublic}${awgPskLine}
+Endpoint = ${s1PublicEndpoint}:${awgPort}
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+`;
+  }
+
   files["server1/" + s1ExitIf + ".conf"] =
 `[Interface]
 Address = ${s1Addr}
@@ -1364,6 +1423,21 @@ PreDown = iptables -D FORWARD -i %i -o %i -m comment --comment wg-in-failover -j
 PublicKey = ${wgInPeerPublic}${wgInPskLine}
 AllowedIPs = ${wgInPeerAllowed}
 `;
+
+    if (sourceMode === "generate" && $("generate-wgin").checked) {
+      const wgInClientAddress = firstAddress(wgInPeerAllowed);
+      files["clients/" + wgInIf + "-client.conf"] =
+`[Interface]
+Address = ${wgInClientAddress}
+PrivateKey = ${wgInPeerPrivate}
+
+[Peer]
+PublicKey = ${wgInPublic}${wgInPskLine}
+Endpoint = ${s1PublicEndpoint}:${wgInPort}
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+`;
+    }
   }
   files["server2/wg-exit.conf"] =
 `[Interface]
