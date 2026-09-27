@@ -1986,7 +1986,7 @@ SERVER1
 3. Рекомендуемый rp_filter:
    sysctl -w net.ipv4.conf.all.rp_filter=2
    sysctl -w net.ipv4.conf.default.rp_filter=2
-
+${sourceMode === "generate" ? `\n3a. Для сгенерированного AWG нужен установленный AmneziaWG runtime + amneziawg-tools (awg/awg-quick). Обычный wg-quick не предназначен для параметров Jc/Jmin/Jmax/S*/H*.\n` : ""}
 4. Установить:
 ${server1ExitInstallRu}${wgInInstallRu}
    server1/bird.conf                    -> /etc/bird/bird.conf
@@ -2057,7 +2057,7 @@ SERVER1
 3. Recommended rp_filter:
    sysctl -w net.ipv4.conf.all.rp_filter=2
    sysctl -w net.ipv4.conf.default.rp_filter=2
-
+${sourceMode === "generate" ? `\n3a. Generated AWG requires an AmneziaWG runtime plus amneziawg-tools (awg/awg-quick). Standard wg-quick is not intended for Jc/Jmin/Jmax/S*/H* parameters.\n` : ""}
 4. Install:
 ${server1ExitInstallEn}${wgInInstallEn}
    server1/bird.conf -> /etc/bird/bird.conf
