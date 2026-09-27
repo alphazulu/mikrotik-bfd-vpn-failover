@@ -238,6 +238,10 @@ assert.match(files["mikrotik/bfd-failover.rsc"], /connection-mark=no-mark/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /in-interface-list=!WAN/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /chain=input protocol=udp dst-port=3784 src-address=10\.88\.99\.1\/32 dst-address=10\.88\.99\.4\/32 in-interface="wg-awg-proxy-1" comment="VPN_BFD_INPUT"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /place-before=\(\$inputDrop->0\)/);
+assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /^\s*:return\s*$/m, "RouterOS 7.24.x requires a value for :return; watcher must not emit bare :return");
+assert.match(files["mikrotik/bfd-failover.rsc"], /:local routeIds \[\/ip route find where comment="VPN_BFD_PRIMARY"\]/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /:local routeId \[:pick \$routeIds 0\]/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /:if \(\[:typeof \$vpnBfdLastState\] = "nothing"\) do=\{[\s\S]*?:set vpnBfdLastState \$currentState[\s\S]*?\} else=\{/);
 {
   const rsc = files["mikrotik/bfd-failover.rsc"];
   const tableNames = new Set(["main"]);
