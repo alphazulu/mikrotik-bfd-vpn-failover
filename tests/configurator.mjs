@@ -76,7 +76,7 @@ URLMock.revokeObjectURL = () => {};
 
 const expose = new Function(
   "document", "Node", "navigator", "location", "URL", "Blob", "TextEncoder",
-  src + "\nreturn {state, importConfig, validate, generateFiles};"
+  src + "\nreturn {state, importConfig, validate, generateFiles, generateVpnMaterial, x25519PublicFromPrivate};"
 );
 const api = expose(documentMock, NodeMock, navigatorMock, locationMock, URLMock, Blob, TextEncoder);
 
@@ -375,6 +375,46 @@ assert.equal(api.validate().ok, false, "Invalid direct-route destination must be
 element("mt-direct-routes").value = "";
 element("mt-policy-mode").value = "policy";
 assert.equal(api.validate().ok, true, "Policy mode must still validate after direct-mode test");
+
+// Local generation mode: deterministic X25519 regression vector + complete AWG/WG output.
+assert.equal(
+  api.x25519PublicFromPrivate("dwdtCnMYpX08FsFyUbJmRd9ML4frwJkqsXf7pR25LCo="),
+  "hSDwCYkwp1R0i33ctD73Wg2/Og0mOBr066SpjqqbTmo=",
+  "X25519 public-key derivation must match RFC 7748 vector"
+);
+
+element("config-source-mode").value = "generate";
+element("s1-public-endpoint").value = "203.0.113.10";
+element("awg-profile").value = "awg2";
+element("generate-psk").checked = true;
+element("generate-wgin").checked = true;
+api.generateVpnMaterial();
+
+assert.match(element("s1-private").value, /^[A-Za-z0-9+/]{43}=$/);
+assert.match(element("s1-public").value, /^[A-Za-z0-9+/]{43}=$/);
+assert.equal(api.x25519PublicFromPrivate(element("s1-private").value), element("s1-public").value);
+assert.equal(api.x25519PublicFromPrivate(element("s2-private").value), element("s2-public").value);
+assert.equal(element("s1-psk").value, element("s2-psk").value);
+assert.equal(api.x25519PublicFromPrivate(element("awg-private").value), element("awg-public").value);
+assert.equal(api.x25519PublicFromPrivate(element("awg-peer-private").value), element("awg-peer-public").value);
+assert.equal(api.x25519PublicFromPrivate(element("wg-in-private").value), element("wg-in-public").value);
+assert.equal(api.x25519PublicFromPrivate(element("wg-in-peer-private").value), element("wg-in-peer-public").value);
+assert.equal(api.validate().ok, true, "Locally generated AWG/WG topology must validate");
+api.generateFiles();
+
+const generatedModeFiles = api.state.generated;
+assert.match(generatedModeFiles["server1/awg0.conf"], /ListenPort = 51820/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /S3 = \d+/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /S4 = \d+/);
+assert.match(generatedModeFiles["server1/awg0.conf"], /AllowedIPs = 10\.88\.99\.4\/32/);
+assert.match(generatedModeFiles["clients/awg0-client.conf"], /Endpoint = 203\.0\.113\.10:51820/);
+assert.match(generatedModeFiles["clients/awg0-client.conf"], /AllowedIPs = 0\.0\.0\.0\/0/);
+assert.match(generatedModeFiles["clients/wg-in-client.conf"], /Endpoint = 203\.0\.113\.10:51831/);
+assert.match(generatedModeFiles["clients/wg-in-client.conf"], /Address = 10\.88\.100\.2\/32/);
+assert.match(generatedModeFiles["server1/vpn-failover-firewall.service"], /--dport 51820 .*vpn-failover-listener/);
+assert.match(generatedModeFiles["server1/vpn-failover-firewall.service"], /--dport 51831 .*vpn-failover-listener/);
+
+element("config-source-mode").value = "import";
 
 const validS2 = element("s2-address").value;
 element("s2-address").value = "10.77.67.2/30";
