@@ -57,6 +57,14 @@ This means Server1 does not need to rewrite one route's gateway during failover.
 
 ## 2. BFD and BIRD
 
+### Design assumption: the tunnel path itself traverses the Internet
+
+Server1 and every Server2 are Internet-reachable hosts, and every `wg-exit*` is established to the public Internet endpoint of its Server2. There is no separate private underlay that could keep BFD alive while the public path used to reach that server is down.
+
+Therefore, in this project's topology, BFD is intentionally used as the exit liveness signal. A BFD UP state proves reachability over the actual Internet/WireGuard path to that Server2 plus the local tunnel/firewall/BIRD path required for forwarding. If the Internet path to that Server2 fails, the WireGuard transport cannot carry BFD and BIRD withdraws only that exit's default route.
+
+The project deliberately does **not** generate recursive routes to an unrelated public probe address as the primary health check. Such a probe would add a third-party dependency and would test a different path from the actual Server1 ↔ Server2 tunnel. This is a topology-specific design decision, not a general claim that BFD validates arbitrary Internet destinations or NAT.
+
 BFD runs independently across every Server1 ↔ Server2 WireGuard interface. BIRD on Server1 owns one static default route per exit, each with the `bfd` attribute and its own BIRD/Linux routing table.
 
 Conceptually for each exit:
