@@ -30,7 +30,7 @@ Create `/etc/wireguard/wg-exit.conf` from `configs/server2/wg-exit.conf.example`
 
 Important points:
 
-- Server2 listens on `<WG_EXIT_PORT>/udp`.
+- Server2 listens on `<WG_EXIT_PORT>/udp`, and the generated `wg-exit.conf` explicitly permits that UDP port in `INPUT` on `<SERVER2_WAN_IF>`.
 - `AllowedIPs` for the Server1 peer includes the Server1 tunnel address plus all VPN client networks routed through Server1.
 - `PostUp`/`PostDown` persist the required `FORWARD` permission for `wg-exit`;
 - `PostUp`/`PostDown` also permit the public WireGuard listen port and inner single-hop BFD UDP/3784 in `INPUT`.
@@ -183,6 +183,8 @@ Install `configs/server1/vpn-failover-firewall.service.example` as:
 /etc/systemd/system/vpn-failover-firewall.service
 ```
 
+The browser configurator requires the Server1 AWG `ListenPort` so it can generate the explicit WAN-side `INPUT` rule. When an incoming AWG config is imported, `ListenPort` is read automatically. If the field is filled manually, enter the actual UDP listen port used by the Server1 AWG service.
+
 Replace placeholders and enable it:
 
 ```bash
@@ -190,7 +192,7 @@ systemctl daemon-reload
 systemctl enable --now vpn-failover-firewall.service
 ```
 
-The unit manages source-specific fallback `MASQUERADE` rules plus explicit Server1 `FORWARD` rules for the incoming VPN interfaces. It also installs narrow `INPUT` accepts for single-hop BFD UDP/3784 from MikroTik on `<AWG_IF>` and from every Server2 on the matching `wg-exit*` interface. Generated rules carry project-specific comments so the service removes only its own entries.
+The unit manages source-specific fallback `MASQUERADE` rules plus explicit Server1 `FORWARD` rules for the incoming VPN interfaces. It also installs explicit `INPUT` permissions for the public Server1 AWG listen port on `<SERVER1_WAN_IF>`, the optional `wg-in` listen port when generated, single-hop BFD UDP/3784 from MikroTik on `<AWG_IF>`, and BFD from every Server2 on the matching `wg-exit*` interface. Generated rules carry project-specific comments so the service removes only its own entries.
 
 ## 10. Server1 — BIRD
 
