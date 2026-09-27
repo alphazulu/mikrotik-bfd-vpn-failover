@@ -20,7 +20,7 @@ const state = {
 
 const defaults = {
   "config-source-mode": "import",
-  "awg-profile": "legacy",
+  "awg-profile": "awg31",
   "awg-mtu": "1280",
   "wg-port": "51830",
   "s1-wan": "eth0",
@@ -348,6 +348,26 @@ function randomIntInclusive(min, max) {
 }
 
 function generateAwgParameters(profile) {
+  // AWG 3.1 defaults follow the current Amnezia self-hosted generator:
+  // Jc 4..6, Jmin/Jmax 10/50, S1-S4 = 12, H1-H4 = 1/2/3/4.
+  // Fixed compatibility headers are intentional with Header Protection.
+  if (profile === "awg3" || profile === "awg31") {
+    return {
+      Jc: randomIntInclusive(4, 6),
+      Jmin: 10,
+      Jmax: 50,
+      S1: 12,
+      S2: 12,
+      S3: 12,
+      S4: 12,
+      H1: 1,
+      H2: 2,
+      H3: 3,
+      H4: 4
+    };
+  }
+
+  // AWG 2.0: preserve the existing randomized legacy obfuscation profile.
   const jc = randomIntInclusive(4, 12);
   const jmin = randomIntInclusive(8, 40);
   const jmax = randomIntInclusive(Math.max(jmin + 32, 64), Math.min(jmin + 200, 280));
@@ -369,12 +389,73 @@ function generateAwgParameters(profile) {
     Jmax: jmax,
     S1: s1,
     S2: s2,
-    S3: profile === "awg2" ? randomIntInclusive(8, 55) : "",
-    S4: profile === "awg2" ? randomIntInclusive(4, 27) : "",
+    S3: randomIntInclusive(8, 55),
+    S4: randomIntInclusive(4, 27),
     H1: nextHeader(),
     H2: nextHeader(),
     H3: nextHeader(),
     H4: nextHeader()
+  };
+}
+
+function applyAwg3Defaults(profile) {
+  const is3 = profile === "awg3" || profile === "awg31";
+  if (!is3) {
+    $("awg-header-protection-key").value = "";
+    $("awg-content-padding").value = "";
+    $("awg-rekey-after").value = "";
+    $("awg-rekey-timeout").value = "";
+    $("awg-reject-after").value = "";
+    $("awg-keepalive-timeout").value = "";
+    $("awg-max-handshake-attempts").value = "";
+    $("awg-random-trailers").value = "";
+    $("awg-disable-cookies").value = "";
+    return;
+  }
+
+  $("awg-header-protection-key").value = generatePresharedKey();
+  $("awg-content-padding").value = "10-100";
+  $("awg-rekey-after").value = "100-120";
+  $("awg-rekey-timeout").value = "3-7";
+  $("awg-reject-after").value = "150-180";
+  $("awg-keepalive-timeout").value = "5-15";
+  $("awg-max-handshake-attempts").value = "15-20";
+  $("awg-random-trailers").value = profile === "awg31" ? "on" : "";
+  $("awg-disable-cookies").value = profile === "awg31" ? "on" : "";
+
+  // A per-packet DNS-shaped CPS prelude. Server config keeps I1-I5 commented/
+  // omitted, matching the current self-hosted Amnezia layout; client gets I1.
+  $("awg-i1").value = "<r 2><b 0x010001000000000006><rc 6><b 0x03636f6d0000010001>";
+  $("awg-i2").value = "";
+  $("awg-i3").value = "";
+  $("awg-i4").value = "";
+  $("awg-i5").value = "";
+}
+
+function validU16Range(value) {
+  const m = String(value || "").trim().match(/^(\d+)(?:-(\d+))?$/);
+  if (!m) return false;
+  const a = Number(m[1]);
+  const b = m[2] === undefined ? a : Number(m[2]);
+  return Number.isInteger(a) && Number.isInteger(b) && a >= 0 && b >= a && b <= 65535;
+}
+
+function awg3ParametersFromFields() {
+  return {
+    HeaderProtectionKey: value("awg-header-protection-key"),
+    ContentPaddingAddition: value("awg-content-padding"),
+    RekeyAfterTime: value("awg-rekey-after"),
+    RekeyTimeout: value("awg-rekey-timeout"),
+    RejectAfterTime: value("awg-reject-after"),
+    KeepaliveTimeout: value("awg-keepalive-timeout"),
+    MaxHandshakeAttempts: value("awg-max-handshake-attempts"),
+    RandomTrailers: value("awg-random-trailers"),
+    DisableCookies: value("awg-disable-cookies"),
+    I1: value("awg-i1"),
+    I2: value("awg-i2"),
+    I3: value("awg-i3"),
+    I4: value("awg-i4"),
+    I5: value("awg-i5")
   };
 }
 
@@ -487,12 +568,31 @@ function importConfig(role, text) {
     for (const key of ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4"]) {
       if (parsed.interface[key] !== undefined) importedAwg[key] = parsed.interface[key];
     }
+    const awg3FieldMap = {
+      HeaderProtectionKey: "awg-header-protection-key",
+      ContentPaddingAddition: "awg-content-padding",
+      RekeyAfterTime: "awg-rekey-after",
+      RekeyTimeout: "awg-rekey-timeout",
+      RejectAfterTime: "awg-reject-after",
+      KeepaliveTimeout: "awg-keepalive-timeout",
+      MaxHandshakeAttempts: "awg-max-handshake-attempts",
+      RandomTrailers: "awg-random-trailers",
+      DisableCookies: "awg-disable-cookies",
+      I1: "awg-i1", I2: "awg-i2", I3: "awg-i3", I4: "awg-i4", I5: "awg-i5"
+    };
+    for (const [key, id] of Object.entries(awg3FieldMap)) {
+      if (parsed.interface[key] !== undefined) $(id).value = parsed.interface[key];
+    }
     if (Object.keys(importedAwg).length) {
       populateAwgParameterFields(Object.assign({
         Jc: "", Jmin: "", Jmax: "", S1: "", S2: "", S3: "", S4: "",
         H1: "", H2: "", H3: "", H4: ""
       }, importedAwg));
-      if (importedAwg.S3 || importedAwg.S4) $("awg-profile").value = "awg2";
+      if (parsed.interface.HeaderProtectionKey) {
+        $("awg-profile").value = (parsed.interface.RandomTrailers || parsed.interface.DisableCookies) ? "awg31" : "awg3";
+      } else if (importedAwg.S3 || importedAwg.S4) {
+        $("awg-profile").value = "awg2";
+      }
     }
 
     const address = firstIpv4Address(parsed.interface.Address);
@@ -835,7 +935,9 @@ function generateVpnMaterial() {
     $("awg-peer-private").value = awgPeerPair.privateKey;
     $("awg-peer-public").value = awgPeerPair.publicKey;
     $("awg-psk").value = usePsk ? generatePresharedKey() : "";
-    populateAwgParameterFields(generateAwgParameters($("awg-profile").value || "legacy"));
+    const selectedAwgProfile = $("awg-profile").value || "awg31";
+    populateAwgParameterFields(generateAwgParameters(selectedAwgProfile));
+    applyAwg3Defaults(selectedAwgProfile);
 
     if ($("generate-wgin").checked) {
       setIfEmpty("wg-in-address", "10.88.100.1/24");
