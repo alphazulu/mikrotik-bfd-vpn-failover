@@ -476,6 +476,25 @@ function importConfig(role, text) {
 
   if (role === "in") {
     if (parsed.interface.ListenPort) $("awg-port").value = parsed.interface.ListenPort;
+    if (parsed.interface.PrivateKey) {
+      $("awg-private").value = parsed.interface.PrivateKey;
+      if (validWgKey(parsed.interface.PrivateKey)) $("awg-public").value = x25519PublicFromPrivate(parsed.interface.PrivateKey);
+    }
+    if (peer.PublicKey) $("awg-peer-public").value = peer.PublicKey;
+    if (peer.PresharedKey) $("awg-psk").value = peer.PresharedKey;
+
+    const importedAwg = {};
+    for (const key of ["Jc", "Jmin", "Jmax", "S1", "S2", "S3", "S4", "H1", "H2", "H3", "H4"]) {
+      if (parsed.interface[key] !== undefined) importedAwg[key] = parsed.interface[key];
+    }
+    if (Object.keys(importedAwg).length) {
+      populateAwgParameterFields(Object.assign({
+        Jc: "", Jmin: "", Jmax: "", S1: "", S2: "", S3: "", S4: "",
+        H1: "", H2: "", H3: "", H4: ""
+      }, importedAwg));
+      if (importedAwg.S3 || importedAwg.S4) $("awg-profile").value = "awg2";
+    }
+
     const address = firstIpv4Address(parsed.interface.Address);
     const cidr = parseCidr(address);
     if (cidr) {
@@ -501,7 +520,10 @@ function importConfig(role, text) {
       $("wg-in-net").value = cidr.network;
     }
     if (parsed.interface.ListenPort) $("wg-in-port").value = parsed.interface.ListenPort;
-    if (parsed.interface.PrivateKey) $("wg-in-private").value = parsed.interface.PrivateKey;
+    if (parsed.interface.PrivateKey) {
+      $("wg-in-private").value = parsed.interface.PrivateKey;
+      if (validWgKey(parsed.interface.PrivateKey)) $("wg-in-public").value = x25519PublicFromPrivate(parsed.interface.PrivateKey);
+    }
     if (peer.PublicKey) $("wg-in-peer-public").value = peer.PublicKey;
     if (peer.PresharedKey) $("wg-in-psk").value = peer.PresharedKey;
     if (peer.AllowedIPs) $("wg-in-peer-allowed").value = peer.AllowedIPs;
@@ -760,6 +782,91 @@ function validateExit(exit, add) {
     if (!mtu) continue;
     const n = Number(mtu);
     if (!Number.isInteger(n) || n < 576 || n > 65535) add("bad", prefix + ": " + label + " должен быть 576..65535", prefix + ": " + label + " must be 576..65535");
+  }
+}
+
+function setIfEmpty(id, val) {
+  if (!value(id)) $(id).value = val;
+}
+
+function generateVpnMaterial() {
+  try {
+    $("config-source-mode").value = "generate";
+    updateConfigSourceMode();
+
+    setIfEmpty("s1-address", "10.77.66.1/30");
+    setIfEmpty("s2-address", "10.77.66.2/30");
+    setIfEmpty("awg-server", "10.88.99.1");
+    setIfEmpty("awg-mt", "10.88.99.4");
+    setIfEmpty("awg-net", "10.88.99.0/24");
+    setIfEmpty("awg-port", "51820");
+
+    const primaryS1 = generateWgKeyPair();
+    const primaryS2 = generateWgKeyPair();
+    $("s1-private").value = primaryS1.privateKey;
+    $("s1-public").value = primaryS1.publicKey;
+    $("s2-private").value = primaryS2.privateKey;
+    $("s2-public").value = primaryS2.publicKey;
+
+    const usePsk = $("generate-psk").checked;
+    const primaryPsk = usePsk ? generatePresharedKey() : "";
+    $("s1-psk").value = primaryPsk;
+    $("s2-psk").value = primaryPsk;
+
+    state.extraExits.forEach((exit, index) => {
+      const third = 67 + index;
+      if (!exit.s1Address) exit.s1Address = "10.77." + third + ".1/30";
+      if (!exit.s2Address) exit.s2Address = "10.77." + third + ".2/30";
+      const a = generateWgKeyPair();
+      const b = generateWgKeyPair();
+      exit.s1Private = a.privateKey;
+      exit.s1Public = a.publicKey;
+      exit.s2Private = b.privateKey;
+      exit.s2Public = b.publicKey;
+      const psk = usePsk ? generatePresharedKey() : "";
+      exit.psk1 = psk;
+      exit.psk2 = psk;
+    });
+
+    const awgServerPair = generateWgKeyPair();
+    const awgPeerPair = generateWgKeyPair();
+    $("awg-private").value = awgServerPair.privateKey;
+    $("awg-public").value = awgServerPair.publicKey;
+    $("awg-peer-private").value = awgPeerPair.privateKey;
+    $("awg-peer-public").value = awgPeerPair.publicKey;
+    $("awg-psk").value = usePsk ? generatePresharedKey() : "";
+    populateAwgParameterFields(generateAwgParameters($("awg-profile").value || "legacy"));
+
+    if ($("generate-wgin").checked) {
+      setIfEmpty("wg-in-address", "10.88.100.1/24");
+      setIfEmpty("wg-in-net", "10.88.100.0/24");
+      setIfEmpty("wg-in-port", "51831");
+      setIfEmpty("wg-in-peer-allowed", "10.88.100.2/32");
+      const serverPair = generateWgKeyPair();
+      const peerPair = generateWgKeyPair();
+      $("wg-in-private").value = serverPair.privateKey;
+      $("wg-in-public").value = serverPair.publicKey;
+      $("wg-in-peer-private").value = peerPair.privateKey;
+      $("wg-in-peer-public").value = peerPair.publicKey;
+      $("wg-in-psk").value = usePsk ? generatePresharedKey() : "";
+    }
+
+    renderExtraExits();
+    updateSecretVisibility();
+    setStatus(
+      "status-generated",
+      "good",
+      tr(
+        "Ключи сгенерированы локально. Заполните публичные endpoint Server1/Server2 и проверьте параметры перед генерацией файлов.",
+        "Keys generated locally. Fill in the public Server1/Server2 endpoints and validate parameters before generating files."
+      )
+    );
+  } catch (err) {
+    setStatus(
+      "status-generated",
+      "bad",
+      tr("Ошибка локальной генерации: ", "Local generation error: ") + (err && err.message ? err.message : String(err))
+    );
   }
 }
 
