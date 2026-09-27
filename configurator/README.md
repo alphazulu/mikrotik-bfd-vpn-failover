@@ -23,9 +23,9 @@ The configurator produces:
 - one Server1 WireGuard config per exit (`wg-exit.conf`, `wg-exit2.conf`, ...);
 - Server1 BIRD configuration;
 - Server1 policy-routing systemd unit;
-- Server1 firewall unit with BFD UDP/3784 INPUT rules for MikroTik and every Server2 exit;
+- Server1 firewall unit with explicit INPUT permissions for the AWG UDP listen port, optional wg-in listen port, and BFD UDP/3784 from MikroTik and every Server2 exit;
 - Server1 event-driven conntrack monitor and service;
-- one `wg-exit.conf` and BIRD responder configuration for every Server2, including INPUT rules for the public WireGuard listen port and inner BFD UDP/3784;
+- one `wg-exit.conf` and BIRD responder configuration for every Server2, including an explicit WAN-side INPUT rule for its WireGuard UDP listen port and an inner INPUT rule for BFD UDP/3784;
 - MikroTik RouterOS BFD/failover script with a narrow `chain=input` BFD UDP/3784 allow plus either address-list/mangle policy routing or direct destination routes;
 - installation instructions;
 - a local `.tar` bundle containing the complete generated set.
@@ -63,3 +63,15 @@ Exits are sorted by priority and mapped to consecutive Linux routing tables star
 The generated BIRD configuration tracks every exit independently with BFD. The generated conntrack monitor flushes VPN client state only when the effective selected exit changes.
 
 Both sides of every additional WireGuard tunnel can be imported locally in the browser. No imported data is transmitted.
+
+
+## Explicit server listener ports
+
+Server firewall generation is deny-by-default-friendly: every UDP service that must accept unsolicited inbound traffic gets an explicit INPUT rule.
+
+- Server1 AWG ListenPort is required and is imported from the incoming AWG config when present.
+- Optional Server1 wg-in ListenPort is permitted when a complete wg-in config is generated.
+- Every Server2 wg-exit ListenPort is permitted on that Server2 WAN interface.
+- BFD UDP/3784 is permitted only on the relevant tunnel interface and exact peer/local tunnel addresses.
+
+Server1 outbound wg-exit interfaces do not require a public listener rule because they initiate the WireGuard transport and do not define a fixed ListenPort in the generated config.
