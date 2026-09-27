@@ -428,9 +428,9 @@ function applyAwg3Defaults(profile) {
   $("awg-random-trailers").value = profile === "awg31" ? "on" : "";
   $("awg-disable-cookies").value = profile === "awg31" ? "on" : "";
 
-  // A per-packet DNS-shaped CPS prelude. Server config keeps I1-I5 commented/
-  // omitted, matching the current self-hosted Amnezia layout; client gets I1.
-  $("awg-i1").value = "<r 2><b 0x010001000000000006><rc 6><b 0x03636f6d0000010001>";
+  // CPS I1-I5 are optional and intentionally left empty by default.
+  // Users may supply a protocol signature appropriate for their environment.
+  $("awg-i1").value = "";
   $("awg-i2").value = "";
   $("awg-i3").value = "";
   $("awg-i4").value = "";
