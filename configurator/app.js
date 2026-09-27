@@ -410,6 +410,11 @@ function applyAwg3Defaults(profile) {
     $("awg-max-handshake-attempts").value = "";
     $("awg-random-trailers").value = "";
     $("awg-disable-cookies").value = "";
+    $("awg-i1").value = "";
+    $("awg-i2").value = "";
+    $("awg-i3").value = "";
+    $("awg-i4").value = "";
+    $("awg-i5").value = "";
     return;
   }
 
@@ -1507,7 +1512,7 @@ function generateFiles() {
       .map((key) => key + " = " + awg3Params[key])
       .join("\n");
     const awgClientIBlock = awgClientI ? "\n" + awgClientI : "";
-    const awgPersistentKeepalive = isAwg3 ? "25-35" : "25";
+    const awgPersistentKeepalive = awgProfile === "awg31" ? "25-35" : "25";
 
     files["server1/" + awgIf + ".conf"] =
 `[Interface]
@@ -2262,7 +2267,8 @@ function maskSecrets(content) {
   if ($("show-secrets").checked) return content;
   return content
     .replace(/^(PrivateKey\s*=\s*).+$/gm, "$1<hidden>")
-    .replace(/^(PresharedKey\s*=\s*).+$/gm, "$1<hidden>");
+    .replace(/^(PresharedKey\s*=\s*).+$/gm, "$1<hidden>")
+    .replace(/^(HeaderProtectionKey\s*=\s*).+$/gm, "$1<hidden>");
 }
 
 function renderResults() {
