@@ -890,6 +890,53 @@ function value(id) {
 function validate() {
   const checks = [];
   const add = (level, ru, en) => checks.push({ level, text: tr(ru, en) });
+  const sourceMode = value("config-source-mode") || "import";
+
+  if (sourceMode === "generate") {
+    if (validEndpointHost(value("s1-public-endpoint"))) {
+      add("good", "Публичный endpoint Server1 задан", "Server1 public endpoint is present");
+    } else {
+      add("bad", "Для генерации клиентских AWG/WG конфигов нужен публичный IPv4/DNS endpoint Server1", "A public IPv4/DNS Server1 endpoint is required to generate AWG/WG client configs");
+    }
+
+    for (const [id, labelRu, labelEn] of [
+      ["awg-private", "AWG PrivateKey Server1", "AWG Server1 PrivateKey"],
+      ["awg-public", "AWG PublicKey Server1", "AWG Server1 PublicKey"],
+      ["awg-peer-private", "AWG PrivateKey peer", "AWG peer PrivateKey"],
+      ["awg-peer-public", "AWG PublicKey peer", "AWG peer PublicKey"]
+    ]) {
+      if (!validWgKey(value(id))) add("bad", labelRu + " должен быть сгенерирован", labelEn + " must be generated");
+    }
+
+    if (value("awg-psk") && !validWgKey(value("awg-psk"))) {
+      add("bad", "AWG PresharedKey имеет неверный формат", "AWG PresharedKey has an invalid format");
+    }
+
+    const awg = awgParametersFromFields();
+    const numericKeys = ["Jc", "Jmin", "Jmax", "S1", "S2", "H1", "H2", "H3", "H4"];
+    if ((value("awg-profile") || "legacy") === "awg2") numericKeys.push("S3", "S4");
+    const nums = {};
+    for (const key of numericKeys) {
+      const n = Number(awg[key]);
+      nums[key] = n;
+      if (!Number.isInteger(n) || n < 0) add("bad", "AWG " + key + " должен быть целым неотрицательным числом", "AWG " + key + " must be a non-negative integer");
+    }
+    if (Number.isInteger(nums.Jmin) && Number.isInteger(nums.Jmax) && nums.Jmax <= nums.Jmin) {
+      add("bad", "AWG Jmax должен быть больше Jmin", "AWG Jmax must be greater than Jmin");
+    }
+    if (Number.isInteger(nums.S1) && Number.isInteger(nums.S2) && nums.S1 + 56 === nums.S2) {
+      add("bad", "AWG требует S1 + 56 != S2", "AWG requires S1 + 56 != S2");
+    }
+    const headers = ["H1", "H2", "H3", "H4"].map((k) => String(awg[k] || ""));
+    if (headers.every(Boolean) && new Set(headers).size !== headers.length) {
+      add("bad", "AWG H1-H4 должны быть уникальны", "AWG H1-H4 must be unique");
+    }
+
+    if ($("generate-wgin").checked) {
+      if (!validWgKey(value("wg-in-public"))) add("bad", "Нужен сгенерированный wg-in Server1 PublicKey", "Generated wg-in Server1 PublicKey is required");
+      if (!validWgKey(value("wg-in-peer-private"))) add("bad", "Нужен сгенерированный wg-in peer PrivateKey", "Generated wg-in peer PrivateKey is required");
+    }
+  }
 
   const s1 = parseCidr(value("s1-address"));
   const s2 = parseCidr(value("s2-address"));
