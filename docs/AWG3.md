@@ -97,10 +97,10 @@ RandomTrailers =
 DisableCookies =
 ```
 
-and uses:
+and, like other AWG 3.x profiles in the current client, uses:
 
 ```ini
-PersistentKeepalive = 25
+PersistentKeepalive = 25-35
 ```
 
 For new installations, AWG 3.1 is preferred.
