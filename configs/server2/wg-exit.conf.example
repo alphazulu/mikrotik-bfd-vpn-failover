@@ -5,6 +5,10 @@ PrivateKey = <SERVER2_WG_EXIT_PRIVATE_KEY>
 # Optional when a non-default MTU is required:
 # MTU = <WG_EXIT_MTU>
 
+# Permit the public WireGuard listener and inner single-hop BFD traffic.
+PostUp = iptables -C INPUT -i <SERVER2_WAN_IF> -p udp --dport <WG_EXIT_PORT> -m comment --comment wg-exit-listen -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -i <SERVER2_WAN_IF> -p udp --dport <WG_EXIT_PORT> -m comment --comment wg-exit-listen -j ACCEPT
+PostUp = iptables -C INPUT -i %i -p udp -s <WG_EXIT_S1_IP>/32 -d <WG_EXIT_S2_IP>/32 --dport 3784 -m comment --comment wg-exit-bfd -j ACCEPT 2>/dev/null || iptables -I INPUT 1 -i %i -p udp -s <WG_EXIT_S1_IP>/32 -d <WG_EXIT_S2_IP>/32 --dport 3784 -m comment --comment wg-exit-bfd -j ACCEPT
+
 # Permit client traffic from wg-exit and established return traffic.
 PostUp = iptables -C FORWARD -i %i -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i %i -m comment --comment wg-exit-failover -j ACCEPT
 PostUp = iptables -C FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT
@@ -12,6 +16,8 @@ PostUp = iptables -C FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m
 # Source-specific Internet NAT for the primary VPN client network.
 PostUp = iptables -t nat -C POSTROUTING -s <AWG_NET> -o <SERVER2_WAN_IF> -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s <AWG_NET> -o <SERVER2_WAN_IF> -m comment --comment wg-exit-failover -j MASQUERADE
 
+PostDown = iptables -D INPUT -i %i -p udp -s <WG_EXIT_S1_IP>/32 -d <WG_EXIT_S2_IP>/32 --dport 3784 -m comment --comment wg-exit-bfd -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D INPUT -i <SERVER2_WAN_IF> -p udp --dport <WG_EXIT_PORT> -m comment --comment wg-exit-listen -j ACCEPT 2>/dev/null || true
 PostDown = iptables -D FORWARD -i %i -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || true
 PostDown = iptables -D FORWARD -o %i -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment wg-exit-failover -j ACCEPT 2>/dev/null || true
 PostDown = iptables -t nat -D POSTROUTING -s <AWG_NET> -o <SERVER2_WAN_IF> -m comment --comment wg-exit-failover -j MASQUERADE 2>/dev/null || true
