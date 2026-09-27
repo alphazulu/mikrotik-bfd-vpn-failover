@@ -32,7 +32,8 @@ Important points:
 
 - Server2 listens on `<WG_EXIT_PORT>/udp`.
 - `AllowedIPs` for the Server1 peer includes the Server1 tunnel address plus all VPN client networks routed through Server1.
-- `PostUp`/`PostDown` persist the required `FORWARD` permission for `wg-exit`.
+- `PostUp`/`PostDown` persist the required `FORWARD` permission for `wg-exit`;
+- `PostUp`/`PostDown` also permit the public WireGuard listen port and inner single-hop BFD UDP/3784 in `INPUT`.
 - The reference config also permits established return traffic to `wg-exit`.
 - Source-specific `MASQUERADE` rules for VPN client networks are installed and removed with `wg-exit`.
 - Optional `MTU` and `PresharedKey` values may be used; a PresharedKey must be identical on both peers.
@@ -189,7 +190,7 @@ systemctl daemon-reload
 systemctl enable --now vpn-failover-firewall.service
 ```
 
-The unit manages source-specific fallback `MASQUERADE` rules plus explicit Server1 `FORWARD` rules for the incoming VPN interfaces. Generated rules carry project-specific comments so the service removes only its own entries.
+The unit manages source-specific fallback `MASQUERADE` rules plus explicit Server1 `FORWARD` rules for the incoming VPN interfaces. It also installs narrow `INPUT` accepts for single-hop BFD UDP/3784 from MikroTik on `<AWG_IF>` and from every Server2 on the matching `wg-exit*` interface. Generated rules carry project-specific comments so the service removes only its own entries.
 
 ## 10. Server1 — BIRD
 
@@ -215,6 +216,7 @@ Validate and inspect:
 bird -p -c /etc/bird/bird.conf
 birdc configure
 birdc show bfd sessions
+iptables -S INPUT | grep 3784
 birdc show route table exit4
 ip route show table 200
 ```
@@ -246,6 +248,8 @@ For a `/32` tunnel address:
 /ip address
 add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF>
 ```
+
+Before relying on BFD, the MikroTik firewall must allow the BFD control packets addressed to the router itself. The generated `.rsc` adds a narrow `chain=input protocol=udp dst-port=3784` rule constrained to `<AWG_SERVER_IP> -> <AWG_MIKROTIK_IP>` on `<MT_AWG_IF>`, and inserts it before the first existing INPUT drop rule when present.
 
 Then choose one of the two generated MikroTik modes:
 
