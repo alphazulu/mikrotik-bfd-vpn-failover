@@ -70,6 +70,20 @@ If table `200` has no route, Linux continues with table `201`, then `202`, and f
 
 The optional `wg-in` interface receives the same exit order using a separate rule-priority range.
 
+## Why one BFD session per Server2 is sufficient here
+
+In this architecture each Server2 is reached from Server1 through the Internet using its own public WireGuard endpoint. BFD inside each `wg-exit*` therefore traverses the same Internet path required by that inter-server tunnel.
+
+Each exit can be evaluated independently:
+
+```text
+Internet path to Server2-A + wg-exit  + BFD UP -> exit A available
+Internet path to Server2-B + wg-exit2 + BFD UP -> exit B available
+Internet path to Server2-C + wg-exit3 + BFD UP -> exit C available
+```
+
+A recursive route through an unrelated public ping target is intentionally not used: it would add a third-party control point and test a path other than the actual `wg-exit` path. If Server2 is later reachable through a private underlay, or NAT/arbitrary external destination reachability must be validated independently, this design assumption should be revisited.
+
 ## BIRD
 
 Each Server2 has its own BIRD IPv4 table and its own Linux kernel table on Server1:
