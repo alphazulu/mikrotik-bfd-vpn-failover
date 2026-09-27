@@ -7,6 +7,12 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 
+# Explicit INPUT permissions for server-side VPN listeners.
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C INPUT -i <SERVER1_WAN_IF> -p udp --dport <AWG_LISTEN_PORT> -m comment --comment vpn-failover-listener -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I INPUT 1 -i <SERVER1_WAN_IF> -p udp --dport <AWG_LISTEN_PORT> -m comment --comment vpn-failover-listener -j ACCEPT'
+
+# Optional wg-in public listener:
+# ExecStart=/bin/sh -c '/usr/sbin/iptables -C INPUT -i <SERVER1_WAN_IF> -p udp --dport <WG_IN_LISTEN_PORT> -m comment --comment vpn-failover-listener -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I INPUT 1 -i <SERVER1_WAN_IF> -p udp --dport <WG_IN_LISTEN_PORT> -m comment --comment vpn-failover-listener -j ACCEPT'
+
 # BFD is local control-plane traffic and must be accepted in INPUT.
 # Single-hop BFD uses UDP destination port 3784.
 ExecStart=/bin/sh -c '/usr/sbin/iptables -C INPUT -i <AWG_IF> -p udp -s <AWG_MIKROTIK_IP>/32 -d <AWG_SERVER_IP>/32 --dport 3784 -m comment --comment vpn-failover-bfd -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I INPUT 1 -i <AWG_IF> -p udp -s <AWG_MIKROTIK_IP>/32 -d <AWG_SERVER_IP>/32 --dport 3784 -m comment --comment vpn-failover-bfd -j ACCEPT'
@@ -29,6 +35,9 @@ ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i <AWG_IF> -m comment --comm
 ExecStop=/bin/sh -c '/usr/sbin/iptables -D FORWARD -i <AWG_IF> -o <AWG_IF> -m comment --comment vpn-failover-forward -j DROP 2>/dev/null || true'
 ExecStop=/bin/sh -c '/usr/sbin/iptables -D INPUT -i <WG_EXIT_IF> -p udp -s <WG_EXIT_S2_IP>/32 -d <WG_EXIT_S1_IP>/32 --dport 3784 -m comment --comment vpn-failover-bfd -j ACCEPT 2>/dev/null || true'
 ExecStop=/bin/sh -c '/usr/sbin/iptables -D INPUT -i <AWG_IF> -p udp -s <AWG_MIKROTIK_IP>/32 -d <AWG_SERVER_IP>/32 --dport 3784 -m comment --comment vpn-failover-bfd -j ACCEPT 2>/dev/null || true'
+# Optional wg-in listener cleanup:
+# ExecStop=/bin/sh -c '/usr/sbin/iptables -D INPUT -i <SERVER1_WAN_IF> -p udp --dport <WG_IN_LISTEN_PORT> -m comment --comment vpn-failover-listener -j ACCEPT 2>/dev/null || true'
+ExecStop=/bin/sh -c '/usr/sbin/iptables -D INPUT -i <SERVER1_WAN_IF> -p udp --dport <AWG_LISTEN_PORT> -m comment --comment vpn-failover-listener -j ACCEPT 2>/dev/null || true'
 
 [Install]
 WantedBy=multi-user.target
