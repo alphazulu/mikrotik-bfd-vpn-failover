@@ -29,6 +29,7 @@ On every **UP → DOWN** and **DOWN → UP** transition, only VPN-client conntra
 - optional additional incoming WireGuard interface;
 - one or more independent inter-server WireGuard exits (`wg-exit`, `wg-exit2`, ...);
 - independent BFD between Server1 and every Server2;
+- generated firewall INPUT rules for single-hop BFD UDP/3784 on Server1, every Server2, and MikroTik;
 - BIRD 2.x for automatic default-route installation/removal;
 - ordered Linux policy routing through tables `200`, `201`, `202`, ... based on Server2 priority;
 - automatic failover Server2 → next Server2 → Server1 WAN;
@@ -55,7 +56,7 @@ It can:
 - validate client subnet and BFD parameters;
 - generate ready-to-use Server1, Server2 and MikroTik configurations;
 - generate an optional `server1/wg-in.conf` with its own `PostUp`/`PreDown` policy-routing and FORWARD lifecycle hooks;
-- generate BIRD/BFD, Linux policy routing, systemd units, persistent Server1 FORWARD/fallback NAT and event-driven conntrack cleanup;
+- generate BIRD/BFD, Linux policy routing, systemd units, persistent Server1 FORWARD/fallback NAT, required BFD INPUT rules, and event-driven conntrack cleanup;
 - generate MikroTik `check-gateway=bfd` and selective `CM_VPN` cleanup;
 - choose between a dedicated RouterOS table with `dst-address-list`/mangle policy routing or direct static routes in `main` without marking;
 - download individual files or the complete generated set as a `.tar`;
@@ -248,6 +249,19 @@ MikroTik watches the BFD-monitored route to Server1. A stateful script remembers
 ```
 
 This avoids waiting for old TCP/UDP/NAT states to expire after a path change.
+
+### BFD firewall
+
+BFD is control-plane traffic terminating on the node itself, so it traverses `INPUT`, not `FORWARD`.
+
+This design uses single-hop BFD, therefore only UDP destination port `3784` is allowed, constrained by the exact tunnel source/destination addresses and interface:
+
+- MikroTik accepts BFD from Server1 on the AWG interface;
+- Server1 accepts BFD from MikroTik on `awg0` and from each Server2 on its corresponding `wg-exit*`;
+- every Server2 accepts BFD from Server1 on `wg-exit`;
+- Server2 also gets an explicit INPUT allow for its public WireGuard UDP listen port.
+
+The generator creates narrow source/destination/interface rules rather than opening UDP/3784 globally.
 
 ## Why BFD instead of ping/Netwatch
 
