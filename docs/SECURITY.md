@@ -55,7 +55,7 @@ Security properties:
 - no cookies, localStorage, sessionStorage, IndexedDB or Service Worker;
 - imported files are read with the browser File API only;
 - generated downloads are created with `Blob` / object URLs locally;
-- private keys are masked in preview unless the user explicitly reveals them.
+- private keys, PresharedKey values, and AWG `HeaderProtectionKey` are masked in preview unless the user explicitly reveals them.
 
 The downloaded generated bundle can contain real private keys and must be treated as sensitive material.
 
@@ -64,4 +64,4 @@ The downloaded generated bundle can contain real private keys and must be treate
 
 Generate mode uses the browser cryptographic random-number generator (`crypto.getRandomValues()`) and performs X25519 public-key derivation locally. Generated private keys and PSKs exist only in the current tab until downloaded; the application still has `connect-src 'none'` and does not send them over the network.
 
-Downloaded generated bundles contain private keys and must be treated as secrets.
+Downloaded generated bundles contain private keys, PSKs, and AWG HeaderProtectionKey values and must be treated as secrets.
