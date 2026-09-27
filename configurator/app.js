@@ -2117,7 +2117,8 @@ function renderResults() {
 function updateSecretVisibility() {
   const show = $("show-secrets").checked;
   ["s1-private", "s1-public", "s2-private", "s2-public", "s1-psk", "s2-psk",
-   "wg-in-private", "wg-in-peer-public", "wg-in-psk"].forEach((id) => {
+   "awg-private", "awg-public", "awg-peer-private", "awg-peer-public", "awg-psk",
+   "wg-in-private", "wg-in-public", "wg-in-peer-private", "wg-in-peer-public", "wg-in-psk"].forEach((id) => {
     $(id).type = show ? "text" : "password";
   });
   if (state.currentFile) {
@@ -2252,9 +2253,12 @@ function privacyCheck() {
 
 function clearAll() {
   ["paste-s1", "paste-s2", "paste-in", "paste-wgin", "s1-address", "s2-address", "s2-endpoint",
-   "s1-private", "s1-public", "s2-private", "s2-public", "s1-psk", "s2-psk",
-   "wg-in-private", "wg-in-peer-public", "wg-in-psk", "wg-in-address", "wg-in-port",
-   "wg-in-peer-allowed", "s1-mtu", "s2-mtu", "awg-server", "awg-mt", "awg-net",
+   "s1-public-endpoint", "s1-private", "s1-public", "s2-private", "s2-public", "s1-psk", "s2-psk",
+   "awg-private", "awg-public", "awg-peer-private", "awg-peer-public", "awg-psk",
+   "awg-jc", "awg-jmin", "awg-jmax", "awg-s1", "awg-s2", "awg-s3", "awg-s4",
+   "awg-h1", "awg-h2", "awg-h3", "awg-h4",
+   "wg-in-private", "wg-in-public", "wg-in-peer-private", "wg-in-peer-public", "wg-in-psk", "wg-in-address", "wg-in-port",
+   "wg-in-peer-allowed", "s1-mtu", "s2-mtu", "awg-server", "awg-port", "awg-mt", "awg-net",
    "wg-in-net", "mt-address-lists", "mt-direct-routes"].forEach((id) => { $(id).value = ""; });
 
   ["file-s1", "file-s2", "file-in", "file-wgin"].forEach((id) => { $(id).value = ""; });
@@ -2264,11 +2268,14 @@ function clearAll() {
   });
 
   $("show-secrets").checked = false;
+  $("generate-psk").checked = true;
+  $("generate-wgin").checked = false;
   updateSecretVisibility();
   setStatus("status-s1", "neutral", "—");
   setStatus("status-s2", "neutral", "—");
   setStatus("status-in", "neutral", "—");
   setStatus("status-wgin", "neutral", "—");
+  setStatus("status-generated", "neutral", "—");
   $("validation").innerHTML = "";
   $("result-tabs").innerHTML = "";
   $("preview").querySelector("code").textContent = "";
@@ -2279,6 +2286,7 @@ function clearAll() {
   state.nextExitId = 2;
   renderExtraExits();
   updateMikrotikMode();
+  updateConfigSourceMode();
 }
 
 $("lang-ru").addEventListener("click", () => setLanguage("ru"));
@@ -2293,6 +2301,8 @@ $("parse-s1").addEventListener("click", () => importConfig("s1", $("paste-s1").v
 $("parse-s2").addEventListener("click", () => importConfig("s2", $("paste-s2").value));
 $("parse-in").addEventListener("click", () => importConfig("in", $("paste-in").value));
 $("parse-wgin").addEventListener("click", () => importConfig("wgin", $("paste-wgin").value));
+$("config-source-mode").addEventListener("change", updateConfigSourceMode);
+$("generate-vpn-material").addEventListener("click", generateVpnMaterial);
 $("add-exit").addEventListener("click", () => {
   state.extraExits.push(newExtraExit());
   renderExtraExits();
@@ -2317,3 +2327,4 @@ setLanguage("ru");
 updateSecretVisibility();
 renderExtraExits();
 updateMikrotikMode();
+updateConfigSourceMode();
