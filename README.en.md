@@ -69,7 +69,7 @@ Generate mode defaults to **AWG 3.1**. Header Protection uses a dedicated 32-byt
 
 The AWG 3.0 profile emits Header Protection plus timing/padding parameters but omits the 3.1-only `RandomTrailers` / `DisableCookies` toggles. AWG 3.1 adds those toggles and uses the current self-hosted defaults.
 
-See [AWG 3.0/3.1 generation](docs/AWG3.md).
+See [AWG 3.0/3.1 generation](docs/AWG3.en.md).
 
 ### Multiple Server2 exits
 
@@ -86,8 +86,8 @@ all DOWN    -> main     -> Server1 WAN
 
 BFD monitors every exit independently. `vpn-exit-monitor` flushes VPN conntrack only when the actually selected exit changes; a lower-priority backup flapping while the primary remains healthy does not disturb current sessions.
 
-See [Multiple Server2 exits and prioritized failover](docs/MULTI_EXIT.md).  
-Russian: [Несколько Server2 и приоритетный failover](docs/MULTI_EXIT.ru.md).
+See [Multiple Server2 exits and prioritized failover](docs/MULTI_EXIT.en.md).
+Russian: [Несколько Server2 и приоритетный failover](docs/MULTI_EXIT.md).
 
 ### MikroTik routing modes
 
@@ -320,17 +320,24 @@ A separate Netwatch, recursive default through a public probe host, or ping watc
 ├── LICENSE
 ├── docs/
 │   ├── ARCHITECTURE.md
+│   ├── ARCHITECTURE.en.md
 │   ├── INSTALL.md
+│   ├── INSTALL.en.md
 │   ├── OPERATIONS.md
+│   ├── OPERATIONS.en.md
+│   ├── AWG3.md / AWG3.en.md
 │   ├── MULTI_EXIT.md
-│   ├── MULTI_EXIT.ru.md
+│   ├── MULTI_EXIT.en.md
 │   ├── SECURITY.md
-│   └── VARIABLES.md
+│   ├── SECURITY.en.md
+│   ├── VARIABLES.md
+│   └── VARIABLES.en.md
 ├── configs/
 │   ├── mikrotik/
 │   ├── server1/
 │   └── server2/
 └── configurator/
+    ├── README.md / README.en.md
     ├── index.html
     ├── app.js
     └── style.css
@@ -338,12 +345,14 @@ A separate Netwatch, recursive default through a public probe host, or ping watc
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Installation](docs/INSTALL.md)
-- [Operations and testing](docs/OPERATIONS.md)
-- [Multiple Server2 exits and priorities](docs/MULTI_EXIT.md)
-- [Publication security](docs/SECURITY.md)
-- [Placeholder reference](docs/VARIABLES.md)
+- [Architecture](docs/ARCHITECTURE.en.md)
+- [Installation](docs/INSTALL.en.md)
+- [Operations and testing](docs/OPERATIONS.en.md)
+- [AWG 3.0/3.1 generation](docs/AWG3.en.md)
+- [Multiple Server2 exits and priorities](docs/MULTI_EXIT.en.md)
+- [Publication security](docs/SECURITY.en.md)
+- [Placeholder reference](docs/VARIABLES.en.md)
+- [Configurator guide](configurator/README.en.md)
 - [Full-guide index](FULL_GUIDE.md)
 - [Russian README](README.md)
 
@@ -377,7 +386,7 @@ Automatic failback through Server2 is expected.
 
 ## Keeping Russian and English documentation in sync
 
-`README.md` and `README.en.md` are equal-language versions of the main project documentation.
+`README.md` is the primary Russian guide, with a full English translation in `README.en.md`. In `docs/` and `configurator/`, unsuffixed Markdown files are Russian and `.en.md` files are English.
 
 **Every functional change must update both versions in the same change set.**
 
@@ -400,7 +409,7 @@ Never commit:
 - production files copied from `/etc/wireguard/` without review;
 - real public IP addresses unless publication is intentional.
 
-See [SECURITY.md](docs/SECURITY.md) before publication.
+See [SECURITY.en.md](docs/SECURITY.en.md) before publication.
 
 ## License
 

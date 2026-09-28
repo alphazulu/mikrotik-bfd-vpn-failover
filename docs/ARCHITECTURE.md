@@ -1,21 +1,18 @@
-# Architecture
+# Архитектура
 
-## 1. Routing model
+[English version](ARCHITECTURE.en.md)
 
-Server1 has an ordered set of Internet exits for VPN client traffic:
+## 1. Маршрутизация
 
-1. one or more Server2 nodes, each reached through its own WireGuard interface;
-2. final fallback through Server1's normal WAN and `main` routing table.
+Для трафика VPN-клиентов на Server1 задан упорядоченный список выходов в интернет: один или несколько Server2 через отдельные интерфейсы WireGuard, затем резервный выход через WAN Server1 и таблицу `main`.
 
-Every Server2 has a unique numeric priority. Lower values are preferred.
-
-The key mechanism is Linux policy routing. With one exit:
+У каждого Server2 свой числовой приоритет: меньшее значение означает более предпочтительный выход. Основа переключения — Linux policy routing. Для одного выхода:
 
 ```bash
 ip rule add priority 1000 iif <AWG_IF> lookup 200
 ```
 
-With three prioritized exits the configurator generates an ordered chain:
+Для трёх выходов конфигуратор создаёт цепочку:
 
 ```bash
 ip rule add priority 1000 iif <AWG_IF> lookup 200
@@ -23,15 +20,13 @@ ip rule add priority 1001 iif <AWG_IF> lookup 201
 ip rule add priority 1002 iif <AWG_IF> lookup 202
 ```
 
-The highest-priority Server2 owns the first table, the next Server2 owns the next table, and so on.
-
-An optional second incoming WireGuard interface uses the same ordered exit tables. In a single-exit topology the historical form remains:
+Первую таблицу получает самый приоритетный Server2. Дополнительный входящий интерфейс WireGuard использует те же таблицы. В схеме с одним выходом сохраняется правило:
 
 ```bash
 ip rule add priority 1001 iif <WG_IN_IF> lookup 200
 ```
 
-In a multi-exit topology the generated `wg-in.conf` owns a separate ordered rule range, for example:
+При нескольких выходах `wg-in.conf` создаёт отдельный диапазон приоритетов:
 
 ```bash
 ip rule add priority 2000 iif <WG_IN_IF> lookup 200
@@ -39,49 +34,37 @@ ip rule add priority 2001 iif <WG_IN_IF> lookup 201
 ip rule add priority 2002 iif <WG_IN_IF> lookup 202
 ```
 
-These rules are installed and removed by `PostUp`/`PreDown`.
-
-Linux policy rules are evaluated in order. If one table does not contain a matching route, lookup continues to the next rule.
-
-For example:
+Правила добавляются в `PostUp` и удаляются в `PreDown`. Если в таблице нет подходящего маршрута, Linux переходит к следующему правилу:
 
 ```text
-table 200 has default -> Server2-A
-table 200 empty       -> try table 201
-table 201 has default -> Server2-B
-table 201 empty       -> try table 202
-all exit tables empty -> main -> Server1 WAN
+table 200: default через Server2-A -> выбран Server2-A
+table 200: пуста                -> проверка table 201
+table 201: default через Server2-B -> выбран Server2-B
+все таблицы выходов пусты      -> main -> WAN Server1
 ```
 
-This means Server1 does not need to rewrite one route's gateway during failover. Each Server2 owns its own table and BFD only adds/removes that exit's default route.
+Шлюз единственного маршрута при переключении менять не требуется: каждый Server2 владеет собственной таблицей, а BFD добавляет или удаляет из неё маршрут по умолчанию.
 
-## 2. BFD and BIRD
+## 2. BFD и BIRD
 
-### Design assumption: the tunnel path itself traverses the Internet
+### Что именно проверяет BFD
 
-Server1 and every Server2 are Internet-reachable hosts, and every `wg-exit*` is established to the public Internet endpoint of its Server2. There is no separate private underlay that could keep BFD alive while the public path used to reach that server is down.
+Server1 и Server2 доступны через интернет. Интерфейс `wg-exit*` подключается к публичному адресу соответствующего Server2. Отдельного частного канала, способного сохранить BFD при потере публичного пути к Server2, в этой схеме нет.
 
-Therefore, in this project's topology, BFD is intentionally used as the exit liveness signal. A BFD UP state proves reachability over the actual Internet/WireGuard path to that Server2 plus the local tunnel/firewall/BIRD path required for forwarding. If the Internet path to that Server2 fails, the WireGuard transport cannot carry BFD and BIRD withdraws only that exit's default route.
+Поэтому BFD служит сигналом доступности выхода: состояние UP подтверждает прохождение пакетов через реальный путь Server1 ↔ Server2, WireGuard, локальный firewall и BIRD. Если интернет-путь к конкретному Server2 разрывается, WireGuard не переносит BFD и BIRD отзывает маршрут только этого выхода. BFD не проверяет произвольные внешние адреса или работу NAT в целом.
 
-The project deliberately does **not** generate recursive routes to an unrelated public probe address as the primary health check. Such a probe would add a third-party dependency and would test a different path from the actual Server1 ↔ Server2 tunnel. This is a topology-specific design decision, not a general claim that BFD validates arbitrary Internet destinations or NAT.
+Генератор не добавляет рекурсивные маршруты через сторонний публичный адрес: такая проверка зависела бы от другого узла и другого пути. Решение относится к описанной топологии; при иной топологии проверку нужно пересмотреть.
 
-BFD runs independently across every Server1 ↔ Server2 WireGuard interface. BIRD on Server1 owns one static default route per exit, each with the `bfd` attribute and its own BIRD/Linux routing table.
-
-Conceptually for each exit:
+На каждом туннеле Server1 ↔ Server2 работает независимая BFD-сессия. BIRD на Server1 создаёт по одному статическому маршруту с атрибутом `bfd` и отдельной Linux/BIRD-таблице на выход:
 
 ```text
-BFD session UP
-    -> that exit's static default route is valid
-    -> its kernel protocol exports the route to its Linux table
-
-BFD session DOWN
-    -> only that exit's route is withdrawn
-    -> policy lookup automatically continues to the next table
+BFD UP   -> маршрут этого выхода действителен -> BIRD экспортирует default в Linux-таблицу
+BFD DOWN -> отзывается только этот default      -> policy routing пробует следующую таблицу
 ```
 
-The configurator deliberately uses one WireGuard interface per Server2. This avoids ambiguous peer selection when multiple exit peers would otherwise claim the same `AllowedIPs = 0.0.0.0/0` on one interface.
+Каждому Server2 нужен свой WireGuard-интерфейс: иначе несколько peers с `AllowedIPs = 0.0.0.0/0` на одном интерфейсе дадут неоднозначный выбор peer для исходящих пакетов.
 
-Recommended BFD timers:
+Начальные таймеры BFD:
 
 ```text
 minimum transmit: 500 ms
@@ -89,141 +72,105 @@ minimum receive:  500 ms
 multiplier:       3
 ```
 
-This normally detects a complete failure in roughly 1.5 seconds.
+Полный обрыв обычно определяется примерно за 1,5 секунды.
 
-## BFD firewall path
+### Путь BFD через firewall
 
-BFD packets terminate on the local routing process/router and therefore traverse the host/router `INPUT` chain, not `FORWARD`.
-
-This project uses direct/single-hop BFD only:
+BFD-пакеты предназначены локальному процессу маршрутизации, поэтому проходят через `INPUT`, а не `FORWARD`. Используется только прямой single-hop BFD:
 
 ```text
 MikroTik -> Server1 awg0       UDP dst 3784
 Server1  -> MikroTik           UDP dst 3784
-Server1  <-> each Server2      UDP dst 3784 inside wg-exit*
+Server1  <-> каждый Server2    UDP dst 3784 внутри wg-exit*
 ```
 
-The generated firewall rules are deliberately narrow:
+Генерируемые правила ограничены интерфейсом туннеля, точными адресами источника и назначения и UDP-портом 3784. На Server2 `wg-exit.conf` дополнительно открывает внешний UDP-порт WireGuard на заданном WAN-интерфейсе: это внешний транспорт, тогда как BFD/3784 идёт внутри туннеля к BIRD.
 
-- exact tunnel interface;
-- exact peer source address;
-- exact local destination address;
-- UDP destination port 3784.
+## 3. NAT
 
-On Server2, the generated `wg-exit.conf` also permits the public WireGuard listen UDP port on the configured WAN interface. This is separate from BFD: WireGuard transport is outer/public traffic, while BFD/3784 is inner tunnel traffic delivered to BIRD.
-
-## 3. NAT behavior
-
-### Preferred path
+### Основной путь
 
 ```text
-VPN client private address
-    -> Server1
-    -> wg-exit
-    -> Server2
-    -> MASQUERADE on Server2 WAN
-    -> Internet
+частный адрес VPN-клиента -> Server1 -> wg-exit -> Server2
+                          -> MASQUERADE на WAN Server2 -> интернет
 ```
 
-Server1 does not NAT traffic between the incoming VPN and `wg-exit`.
+Server1 не выполняет NAT между входящим VPN и `wg-exit`. На Server2 правила `MASQUERADE` ограничены подсетями VPN-клиентов; обратный установленный трафик разрешён в `wg-exit`. Правила привязаны к жизненному циклу интерфейса через `PostUp`/`PostDown` и восстанавливаются после обычного перезапуска сервиса.
 
-On Server2 the generated/reference configuration installs source-specific `MASQUERADE` rules for the VPN client subnets and permits established return traffic back into `wg-exit`. These rules are tied to `wg-exit` lifecycle with `PostUp`/`PostDown`, so they survive normal service restarts without relying on a manually entered transient iptables rule.
+### Резервный путь
 
-### Fallback path
+Если Server2 недоступен, те же пакеты выходят напрямую через WAN Server1. Поэтому на Server1 нужен source NAT для подсетей VPN-клиентов. Одноразовый unit `vpn-failover-firewall.service` добавляет правила `MASQUERADE` для этих подсетей, а при остановке удаляет только собственные правила с комментариями.
 
-When Server2 becomes unavailable, the same traffic leaves Server1 directly through its WAN. Server1 therefore needs source NAT for the VPN client subnet(s) on its WAN interface.
+Этот unit также разрешает пересылку с входящих VPN-интерфейсов, обратный `established/related` трафик и запрещает пересылку внутри одного и того же интерфейса. Он совместим с ограничивающей политикой `FORWARD` и не сбрасывает посторонние правила.
 
-The project supplies a oneshot systemd unit, `vpn-failover-firewall.service`, which adds source-specific fallback `MASQUERADE` rules on start and removes only its own commented rules on stop. The same unit also installs explicit Server1 forwarding rules for incoming VPN interfaces: forwarded traffic from each VPN interface is permitted, established/related return traffic is allowed back to that interface, and same-interface hairpin forwarding is dropped. This keeps the generated setup usable with restrictive FORWARD policies without flushing or replacing unrelated firewall state.
+## 4. Conntrack
 
-## 4. Conntrack behavior
+Смена маршрута не перестраивает существующее состояние conntrack/NAT. Поэтому при фактическом переключении выхода и при возврате на более приоритетный выход VPN-соединения очищаются.
 
-Changing a route does not automatically rebuild existing connection tracking and NAT state. Therefore both failover and failback explicitly clear conntrack entries for VPN client subnets.
+На Server1 монитор событий Netlink вычисляет выбранный выход: первую по приоритету таблицу, в которой есть BIRD default. Он удаляет conntrack для клиентских подсетей только при смене выбранного выхода. Колебания резервного маршрута при доступном основном не вызывают очистку.
 
-On Server1 this is done by a Netlink-driven monitor. In a multi-exit deployment it calculates the actually selected exit (the first priority-ordered table that currently contains a BIRD default route) and flushes VPN conntrack only when that selected exit changes. A backup route flapping while a more preferred route remains active does not trigger cleanup.
-
-On MikroTik existing connections are already marked `CM_VPN`, so the router removes only:
+На MikroTik соединения уже помечены `CM_VPN`, поэтому удаляются только они:
 
 ```routeros
 /ip firewall connection remove [find where connection-mark="CM_VPN"]
 ```
 
-The cleanup is performed only on an actual route state transition.
+Очистка запускается только при реальном изменении состояния маршрута.
 
-## 5. MikroTik-side BFD
+## 5. BFD со стороны MikroTik
 
-MikroTik can independently monitor Server1 through BFD inside the AmneziaWG tunnel.
-
-For a point-to-point address configured as `/32`, use the remote tunnel address as the `network` value:
+MikroTik может независимо контролировать Server1 через BFD внутри туннеля AmneziaWG. Если точка MikroTik настроена как `/32`, в поле `network` нужно указать удалённый адрес туннеля:
 
 ```routeros
 /ip address
 add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF>
 ```
 
-This is important for correct single-hop BFD behavior and source address selection.
+Это влияет на single-hop BFD и выбор адреса источника.
 
-## 6. Failure domains
+## 6. Какие отказы обрабатываются
 
-The design handles two separate failures:
+- **Server1 ↔ Server2:** BFD/BIRD и policy routing на Server1.
+- **MikroTik ↔ Server1:** отдельная BFD-сессия и маршрут MikroTik с `check-gateway=bfd`.
 
-### Server1 ↔ Server2 failure
+Эти механизмы работают независимо.
 
-Handled on Server1 by BFD/BIRD and policy routing.
+## 7. Варианты маршрутизации на MikroTik
 
-### MikroTik ↔ Server1 failure
+### Address-list + mangle
 
-Handled on MikroTik by its own BFD session and `check-gateway=bfd` route monitoring.
+Маршрут переключения расположен в отдельной таблице RouterOS. Конфигуратор создаёт таблицу, маршрут с контролем BFD и `mark-connection` для выбранных списков адресов.
 
-The two mechanisms are independent.
-
-
-## 7. MikroTik routing modes
-
-Two MikroTik routing models are supported.
-
-### Address-list + mangle mode
-
-The failover route lives in a dedicated RouterOS routing table. The configurator ensures that the table exists, creates a BFD-monitored route inside it, and generates `mark-connection` rules for the selected destination address lists.
-
-RouterOS v7 requires `new-routing-mark` to reference an existing routing table, so mangle uses the actual table name (for example `VPN`):
+В RouterOS v7 `new-routing-mark` должен ссылаться на существующую таблицу; используется её имя, например `VPN`:
 
 ```routeros
 /ip firewall mangle
 add action=mark-routing chain=prerouting connection-mark=CM_VPN new-routing-mark=VPN
 ```
 
-With the current default RouterOS policy order, routing decisions are evaluated as `mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main`. Mangle therefore attempts the table selected by `new-routing-mark` first. If the BFD-controlled default in `VPN` is inactive and no other route in that table matches, that lookup fails and RouterOS continues through the remaining policy rules. The configurator adds one explicit user rule to make the fallback to `main` obvious:
+При стандартном порядке RouterOS политика проверяется так: `mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main`. Сначала происходит поиск в таблице, заданной `new-routing-mark`. Если BFD выключил её default и больше подходящих маршрутов нет, поиск продолжается. Для явного перехода к `main` конфигуратор добавляет:
 
 ```routeros
 /routing rule
 add action=lookup routing-mark=VPN table=main comment="VPN_BFD_FALLBACK"
 ```
 
-No synthetic `VPN_RM` table/mark is needed.
+Отдельная таблица или метка `VPN_RM` не требуется. Действие `lookup` допускает продолжение поиска; `lookup-only-in-table` при отсутствии маршрута может сделать адрес недоступным.
 
-The fallback rule deliberately uses `action=lookup`, not `lookup-only-in-table`. RouterOS documents `lookup` as the fall-through action: if the selected table cannot resolve the destination, policy processing continues. `lookup-only-in-table` is the no-fallback form and can make the destination unreachable when that table has no active route.
+В специальной таблице должен оставаться только default, управляемый BFD. Старый резервный default через WAN с `distance=2` сделает поиск в `VPN` успешным и не даст перейти к правилу `main`. Если изменён `/routing/settings policy-rules`, проверьте порядок `mangle`, `user` и `main`.
 
-The generator also intentionally keeps only the BFD-controlled default in the dedicated policy table. An old `distance=2` WAN default left inside `VPN` would make the mangle lookup succeed inside `VPN`, so the fallback to `main` would never be reached. If `/routing/settings policy-rules` has been customized away from the default order, verify that `mangle`, `user`, and `main` still appear in a compatible order.
+Пакеты к самому роутеру исключены через `dst-address-type=!local`; входящий трафик из списка WAN не маркируется. Ответы, пришедшие через AWG-интерфейс, также исключаются из повторной маршрутизации в этот туннель.
 
-Packets to the router itself are excluded with `dst-address-type=!local`, and traffic arriving on the WAN interface list is not marked.
+Fasttrack пропускает mangle после первого пакета. Поэтому конфигуратор ограничивает общие fasttrack-правила без заданной метки до `connection-mark=no-mark`; правила для конкретных меток не меняются. Содержимое самих address-list остаётся данными конкретной установки и не генерируется. Метка соединений позволяет удалять на MikroTik только затронутые записи conntrack.
 
-Fasttrack bypasses mangle after the first packet, which would drop the routing mark. The generated import limits existing catch-all fasttrack rules (`connection-mark` unset) to `connection-mark=no-mark`. Rules that already match a specific mark are not modified.
+Если задана таблица `main`, отдельное правило не создаётся: управляемый BFD маршрут и обычный default уже находятся в одной таблице.
 
-The address-list contents themselves are not generated because they are deployment-specific policy data.
+### Прямые маршруты
 
-Because connections are marked, the MikroTik failover script can selectively remove only those connections on route state changes.
+Вместо меток указываются IPv4-адреса или CIDR-сети. Для них конфигуратор создаёт маршруты в `main` через AWG-шлюз Server1 с `check-gateway=bfd`. При DOWN эти маршруты становятся неактивными, и обычный поиск по наиболее длинному префиксу выбирает другой подходящий маршрут, обычно штатный интернет-шлюз.
 
-If the configured routing table is `main`, no extra routing rules are emitted: the BFD route and the normal default already share one table, so an inactive BFD route yields to the remaining default.
+В этом режиме не создаются mangle, connection marks и выборочная очистка conntrack на MikroTik. Он удобен, когда нужные назначения можно задать непосредственно маршрутами.
 
-### Direct-route mode
+## 8. Несколько выходов
 
-No policy-routing marks are used. The configurator accepts one or more IPv4/CIDR destinations and creates static routes directly in `main` through the Server1 AWG gateway with `check-gateway=bfd`.
-
-When the BFD session is DOWN, those specific routes become inactive and normal RouterOS longest-prefix routing falls back to other matching routes, usually the regular Internet default route.
-
-This mode intentionally does not generate mangle rules, connection marks, or selective MikroTik conntrack cleanup. It is simpler and works well when the set of destinations can be expressed directly as routes.
-
-
-## 8. Multi-exit details
-
-See also: [Multiple Server2 exits and prioritized failover](MULTI_EXIT.md) and the [Russian version](MULTI_EXIT.ru.md).
+Подробности: [несколько Server2 и приоритетное переключение](MULTI_EXIT.md).
