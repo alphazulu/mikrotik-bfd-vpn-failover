@@ -301,6 +301,25 @@ journalctl -t vpn-exit-monitor -f
 
 The service listens to Netlink route events using `ip monitor route` and flushes VPN conntrack only on add/delete events for the BIRD default route in table `200`.
 
+### RouterOS policy-routing fallback prerequisites
+
+For address-list + mangle mode, the generated RouterOS configuration assumes the current default routing-decision order:
+
+```text
+mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main
+```
+
+The dedicated routing table (for example `VPN`) is created with `fib` before it is referenced by `new-routing-mark`. The table contains only the BFD-controlled default route. When BFD makes that route inactive, the mangle lookup fails and policy processing continues to the explicit user fallback:
+
+```routeros
+/routing rule
+add action=lookup routing-mark=VPN table=main comment="VPN_BFD_FALLBACK"
+```
+
+Do not change this fallback to `lookup-only-in-table`. Also remove any legacy backup default from the policy table itself, for example a `distance=2` route to the normal WAN gateway, because such a route makes the marked lookup succeed and prevents fallback to `main`.
+
+If the router has a customized `/routing/settings policy-rules`, check it before deployment. The generated design requires `mangle` to be evaluated before `user/main`, and `main` must remain available as the final forwarding table.
+
 ## 12. MikroTik — BFD to Server1
 
 Use the sanitized example in `configs/mikrotik/bfd-failover.rsc.example`.
