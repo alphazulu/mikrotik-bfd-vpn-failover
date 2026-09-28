@@ -192,7 +192,7 @@ RouterOS v7 requires `new-routing-mark` to reference an existing routing table, 
 add action=mark-routing chain=prerouting connection-mark=CM_VPN new-routing-mark=VPN
 ```
 
-With the default RouterOS policy order, the mangle lookup is evaluated before user routing rules. If the BFD route in `VPN` is inactive and no route matches, that lookup fails and RouterOS continues to the next policy rule. The configurator adds one explicit user rule to make the fallback to `main` obvious:
+With the current default RouterOS policy order, routing decisions are evaluated as `mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main`. Mangle therefore attempts the table selected by `new-routing-mark` first. If the BFD-controlled default in `VPN` is inactive and no other route in that table matches, that lookup fails and RouterOS continues through the remaining policy rules. The configurator adds one explicit user rule to make the fallback to `main` obvious:
 
 ```routeros
 /routing rule
@@ -200,6 +200,10 @@ add action=lookup routing-mark=VPN table=main comment="VPN_BFD_FALLBACK"
 ```
 
 No synthetic `VPN_RM` table/mark is needed.
+
+The fallback rule deliberately uses `action=lookup`, not `lookup-only-in-table`. RouterOS documents `lookup` as the fall-through action: if the selected table cannot resolve the destination, policy processing continues. `lookup-only-in-table` is the no-fallback form and can make the destination unreachable when that table has no active route.
+
+The generator also intentionally keeps only the BFD-controlled default in the dedicated policy table. An old `distance=2` WAN default left inside `VPN` would make the mangle lookup succeed inside `VPN`, so the fallback to `main` would never be reached. If `/routing/settings policy-rules` has been customized away from the default order, verify that `mangle`, `user`, and `main` still appear in a compatible order.
 
 Packets to the router itself are excluded with `dst-address-type=!local`, and traffic arriving on the WAN interface list is not marked.
 
