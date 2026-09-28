@@ -113,7 +113,8 @@ function firstIpv4Address(value) {
 }
 
 function validLinuxInterface(value) {
-  return /^[A-Za-z0-9_.:@-]{1,15}$/.test(String(value || ""));
+  // Match the interface-name syntax accepted by wg-quick/awg-quick.
+  return /^[A-Za-z0-9_=+.-]{1,15}$/.test(String(value || ""));
 }
 
 function validNameToken(value) {
@@ -207,6 +208,15 @@ function sameSubnet(a, b) {
   const bb = parseCidr(b);
   if (!aa || !bb || aa.prefix !== bb.prefix) return false;
   return aa.networkInt === bb.networkInt;
+}
+
+function networksOverlap(a, b) {
+  const aa = parseCidr(a);
+  const bb = parseCidr(b);
+  if (!aa || !bb) return false;
+  const shorter = aa.prefix <= bb.prefix ? aa : bb;
+  const other = shorter === aa ? bb : aa;
+  return ((other.networkInt & shorter.mask) >>> 0) === shorter.networkInt;
 }
 
 function safeToken(value) {
@@ -905,6 +915,7 @@ function validateExit(exit, add) {
   if (!Number.isInteger(exit.priority) || exit.priority < 1) add("bad", prefix + ": приоритет должен быть положительным целым", prefix + ": priority must be a positive integer");
   if (!validLinuxInterface(exit.s1Interface)) add("bad", prefix + ": неверное имя интерфейса Server1", prefix + ": invalid Server1 interface name");
   if (!s1 || !s2 || !sameSubnet(exit.s1Address, exit.s2Address)) add("bad", prefix + ": адреса wg-exit должны быть в одной IPv4 подсети", prefix + ": wg-exit addresses must share one IPv4 subnet");
+  if (s1 && s2 && s1.ipInt === s2.ipInt) add("bad", prefix + ": адреса концов WG должны различаться", prefix + ": WG peers must have different tunnel addresses");
   if (!validEndpointHost(exit.endpoint)) add("bad", prefix + ": неверный endpoint", prefix + ": invalid endpoint");
 
   const port = Number(exit.port);
@@ -915,6 +926,14 @@ function validateExit(exit, add) {
   if (!validWgKey(exit.s1Public)) add("bad", prefix + ": неверный Server1 PublicKey", prefix + ": invalid Server1 PublicKey");
   if (!validWgKey(exit.s2Private)) add("bad", prefix + ": неверный Server2 PrivateKey", prefix + ": invalid Server2 PrivateKey");
   if (!validWgKey(exit.s2Public)) add("bad", prefix + ": неверный Server2 PublicKey", prefix + ": invalid Server2 PublicKey");
+  if (validWgKey(exit.s1Private) && validWgKey(exit.s1Public) &&
+      x25519PublicFromPrivate(exit.s1Private) !== exit.s1Public) {
+    add("bad", prefix + ": Server1 PublicKey не соответствует PrivateKey", prefix + ": Server1 PublicKey does not match PrivateKey");
+  }
+  if (validWgKey(exit.s2Private) && validWgKey(exit.s2Public) &&
+      x25519PublicFromPrivate(exit.s2Private) !== exit.s2Public) {
+    add("bad", prefix + ": Server2 PublicKey не соответствует PrivateKey", prefix + ": Server2 PublicKey does not match PrivateKey");
+  }
 
   if (exit.psk1 || exit.psk2) {
     if (!validWgKey(exit.psk1) || !validWgKey(exit.psk2)) add("bad", prefix + ": PresharedKey должен быть задан с обеих сторон", prefix + ": PresharedKey must be present on both sides");
@@ -1097,9 +1116,22 @@ function validate() {
     ]) {
       if (!validWgKey(value(id))) add("bad", labelRu + " должен быть сгенерирован", labelEn + " must be generated");
     }
+    for (const [side, privateId, publicId] of [
+      ["AWG Server1", "awg-private", "awg-public"],
+      ["AWG peer", "awg-peer-private", "awg-peer-public"]
+    ]) {
+      if (validWgKey(value(privateId)) && validWgKey(value(publicId)) &&
+          x25519PublicFromPrivate(value(privateId)) !== value(publicId)) {
+        add("bad", side + ": PublicKey не соответствует PrivateKey", side + ": PublicKey does not match PrivateKey");
+      }
+    }
 
     if (value("awg-psk") && !validWgKey(value("awg-psk"))) {
       add("bad", "AWG PresharedKey имеет неверный формат", "AWG PresharedKey has an invalid format");
+    }
+    const awgMtu = Number(value("awg-mtu"));
+    if (!Number.isInteger(awgMtu) || awgMtu < 576 || awgMtu > 65535) {
+      add("bad", "AWG MTU должен быть 576..65535", "AWG MTU must be 576..65535");
     }
 
     const awg = awgParametersFromFields();
@@ -1157,6 +1189,19 @@ function validate() {
     if ($("generate-wgin").checked) {
       if (!validWgKey(value("wg-in-public"))) add("bad", "Нужен сгенерированный wg-in Server1 PublicKey", "Generated wg-in Server1 PublicKey is required");
       if (!validWgKey(value("wg-in-peer-private"))) add("bad", "Нужен сгенерированный wg-in peer PrivateKey", "Generated wg-in peer PrivateKey is required");
+      for (const [side, privateId, publicId] of [
+        ["wg-in Server1", "wg-in-private", "wg-in-public"],
+        ["wg-in peer", "wg-in-peer-private", "wg-in-peer-public"]
+      ]) {
+        if (validWgKey(value(privateId)) && validWgKey(value(publicId)) &&
+            x25519PublicFromPrivate(value(privateId)) !== value(publicId)) {
+          add("bad", side + ": PublicKey не соответствует PrivateKey", side + ": PublicKey does not match PrivateKey");
+        }
+      }
+      const peerHost = parseCidr(firstAddress(value("wg-in-peer-allowed")));
+      if (!peerHost || peerHost.prefix !== 32) {
+        add("bad", "Для клиентского wg-in конфига первый AllowedIPs должен быть адресом /32", "The first wg-in peer AllowedIPs must be a /32 address to generate a client config");
+      }
     }
   }
 
@@ -1174,6 +1219,9 @@ function validate() {
     } else {
       add("bad", "Server1 и Server2 должны находиться в одной подсети с одинаковым prefix", "Server1 and Server2 must be in the same subnet with the same prefix");
     }
+    if (s1.ipInt === s2.ipInt) {
+      add("bad", "Адреса концов основного wg-exit должны различаться", "Primary wg-exit peers must have different tunnel addresses");
+    }
   }
 
   if (validWgKey(value("s1-private"))) add("good", "PrivateKey Server1 имеет ожидаемый WireGuard-формат", "Server1 PrivateKey has the expected WireGuard format");
@@ -1187,6 +1235,16 @@ function validate() {
 
   if (validWgKey(value("s2-public"))) add("good", "PublicKey Server2 получен", "Server2 PublicKey is present");
   else add("bad", "Не задан корректный PublicKey Server2", "A valid Server2 PublicKey is required");
+
+  for (const [side, privateId, publicId] of [
+    ["Server1 wg-exit", "s1-private", "s1-public"],
+    ["Server2 wg-exit", "s2-private", "s2-public"]
+  ]) {
+    if (validWgKey(value(privateId)) && validWgKey(value(publicId)) &&
+        x25519PublicFromPrivate(value(privateId)) !== value(publicId)) {
+      add("bad", side + ": PublicKey не соответствует PrivateKey", side + ": PublicKey does not match PrivateKey");
+    }
+  }
 
   if (validEndpointHost(value("s2-endpoint"))) add("good", "Endpoint Server2 задан", "Server2 endpoint is present");
   else add("bad", "Endpoint Server2 должен быть IPv4 или DNS-именем без порта", "Server2 endpoint must be an IPv4 address or DNS name without a port");
@@ -1225,6 +1283,9 @@ function validate() {
   const wgInNet = value("wg-in-net");
   if (wgInNet && !parseCidr(wgInNet)) add("bad", "Дополнительный WG client subnet некорректен", "Additional WG client subnet is invalid");
   else if (wgInNet) add("good", "Дополнительный WG client subnet будет добавлен", "Additional WG client subnet will be included");
+  if (awgNet && wgInNet && networksOverlap(value("awg-net"), wgInNet)) {
+    add("bad", "Подсети AWG и wg-in пересекаются", "AWG and wg-in client subnets overlap");
+  }
 
   const wgInAddress = value("wg-in-address");
   const wgInPort = value("wg-in-port");
@@ -1252,6 +1313,13 @@ function validate() {
     if (!validWgKey(wgInPeerPublic)) add("bad", "Нужен корректный wg-in Peer PublicKey", "A valid wg-in Peer PublicKey is required");
     if (!wgInPeerAllowed || wgInPeerAllowed.split(",").map((x) => x.trim()).some((x) => !parseCidr(x))) {
       add("bad", "wg-in Peer AllowedIPs должны содержать IPv4/CIDR", "wg-in Peer AllowedIPs must contain IPv4/CIDR values");
+    }
+    if (wgInNet && wgInPeerAllowed.split(",").some((item) => {
+      const peer = parseCidr(item.trim());
+      const net = parseCidr(wgInNet);
+      return peer && net && (peer.prefix < net.prefix || !isIpInNetwork(peer.ip, wgInNet));
+    })) {
+      add("bad", "wg-in Peer AllowedIPs должны находиться внутри WG client subnet", "wg-in Peer AllowedIPs must stay within the WG client subnet");
     }
     if (wgInPsk && !validWgKey(wgInPsk)) add("bad", "wg-in PresharedKey имеет неверный формат", "wg-in PresharedKey has an invalid format");
     if (!wgInNet) add("bad", "Для wg-in требуется WG client subnet", "WG client subnet is required for wg-in");
@@ -1328,16 +1396,36 @@ function validate() {
   if (new Set(exitInterfaces).size !== exitInterfaces.length) {
     add("bad", "Интерфейсы Server1 для разных Server2 должны иметь уникальные имена", "Server1 interfaces for different Server2 exits must be unique");
   }
+  const allServer1Interfaces = [value("awg-if"), ...exitInterfaces];
+  if (wgInNet) allServer1Interfaces.push(value("wg-in-if"));
+  if (new Set(allServer1Interfaces).size !== allServer1Interfaces.length) {
+    add("bad", "Имена AWG, wg-in и wg-exit интерфейсов Server1 должны различаться", "Server1 AWG, wg-in and wg-exit interface names must be distinct");
+  }
 
   const exitNetworks = exits.map((exit) => networkFromCidr(exit.s1Address)).filter(Boolean);
   if (new Set(exitNetworks).size !== exitNetworks.length) {
     add("bad", "Каждый wg-exit должен использовать отдельную transfer subnet", "Each wg-exit must use a distinct transfer subnet");
+  }
+  for (let i = 0; i < exits.length; i++) {
+    for (let j = i + 1; j < exits.length; j++) {
+      if (networksOverlap(exits[i].s1Address, exits[j].s1Address)) {
+        add("bad", "Transfer subnets разных wg-exit пересекаются", "Transfer subnets of different wg-exit tunnels overlap");
+      }
+    }
+    for (const [name, net] of [["AWG", value("awg-net")], ["wg-in", wgInNet]]) {
+      if (net && networksOverlap(exits[i].s1Address, net)) {
+        add("bad", "Transfer subnet " + exits[i].s1Interface + " пересекается с " + name, "Transfer subnet " + exits[i].s1Interface + " overlaps " + name);
+      }
+    }
   }
 
   const table = Number(value("route-table"));
   if (Number.isInteger(table) && table > 0) {
     add("good", "Linux routing table корректна", "Linux routing table is valid");
     if (table + exits.length - 1 > 2147483647) add("bad", "Диапазон Linux routing tables выходит за допустимые значения", "Linux routing-table range is too large");
+    if ([253, 254, 255].some((reserved) => table <= reserved && table + exits.length - 1 >= reserved)) {
+      add("bad", "Диапазон Linux routing tables пересекает системные таблицы 253..255", "Linux routing-table range includes reserved tables 253..255");
+    }
   } else add("bad", "Linux routing table должна быть положительным числом", "Linux routing table must be a positive integer");
 
   const s1Mtu = value("s1-mtu");
@@ -1470,13 +1558,6 @@ function generateFiles() {
   const allowedServer2 = [s1Ip + "/32", awgNet];
   if (wgInNet) allowedServer2.push(wgInNet);
 
-  const policyExtraStart = wgInNet && !hasWgInConfig
-    ? "\nExecStart=/bin/sh -c '/usr/sbin/ip rule show | grep -Fq \"iif " + wgInIf + " lookup " + table + "\" || /usr/sbin/ip rule add priority 1001 iif " + wgInIf + " lookup " + table + "'"
-    : "";
-  const policyExtraStop = wgInNet && !hasWgInConfig
-    ? "\nExecStop=/bin/sh -c '/usr/sbin/ip rule del priority 1001 iif " + wgInIf + " lookup " + table + " 2>/dev/null || true'"
-    : "";
-
   const monitorExtra = wgInNet
     ? "\n    conntrack -D -s " + wgInNet + " >/dev/null 2>&1 || true"
     : "";
@@ -1517,7 +1598,7 @@ function generateFiles() {
     mikrotikPolicyBlock += "\n# Policy selectors generated from destination address-lists.\n/ip firewall mangle\n";
     for (const listName of mtAddressLists) {
       mikrotikPolicyBlock += "add chain=prerouting action=mark-connection new-connection-mark=" + qRouter(connmark) +
-        " passthrough=yes connection-state=new dst-address-type=!local dst-address-list=" + qRouter(listName) +
+        " passthrough=yes connection-state=new connection-mark=no-mark dst-address-type=!local dst-address-list=" + qRouter(listName) +
         " comment=" + qRouter("VPN_POLICY_MARK") + "\n";
     }
     // RouterOS v7 requires new-routing-mark to reference an existing FIB table.
@@ -1527,7 +1608,7 @@ function generateFiles() {
     // RouterOS continues through the remaining policy rules.
     mikrotikPolicyBlock += "add chain=prerouting action=mark-routing new-routing-mark=" + qRouter(mtTable) +
       " passthrough=yes connection-mark=" + qRouter(connmark) +
-      " dst-address-type=!local in-interface-list=!" + mtWanList +
+      " dst-address-type=!local in-interface-list=!" + mtWanList + " in-interface=!" + qRouter(mtIf) +
       " comment=" + qRouter("VPN_POLICY_ROUTE") + "\n";
 
     if (dedicatedMtTable) {
@@ -1563,6 +1644,11 @@ function generateFiles() {
   }
 
   const files = {};
+  files["server1/90-vpn-failover.conf"] =
+`net.ipv4.ip_forward = 1
+net.ipv4.conf.all.rp_filter = 2
+net.ipv4.conf.default.rp_filter = 2
+`;
 
   if (sourceMode === "generate") {
     const awgNetParsed = parseCidr(awgNet);
@@ -1796,6 +1882,7 @@ protocol bfd bfd_exit {
     neighbor ${s1Ip} dev "wg-exit" local ${s2Ip};
 }
 `;
+  files["server2/90-vpn-failover.conf"] = "net.ipv4.ip_forward = 1\n";
 
   for (const exit of exits.filter((item) => item.id !== 1)) {
     const pskLineExit = exit.psk1 && exit.psk2 && exit.psk1 === exit.psk2
@@ -1864,6 +1951,7 @@ protocol bfd bfd_exit {
     neighbor ${exit.s1Ip} dev "wg-exit" local ${exit.s2Ip};
 }
 `;
+    files[exit.outputDir + "/90-vpn-failover.conf"] = "net.ipv4.ip_forward = 1\n";
   }
 
   const wgInPriorityBase = exits.length === 1 ? 1001 : 2000;
@@ -2172,8 +2260,9 @@ ${mikrotikPolicyBlock}`;
 1. Установить:
    apt update && apt install -y wireguard bird2 conntrack
 
-2. Включить forwarding:
-   sysctl -w net.ipv4.ip_forward=1
+2. Включить постоянный forwarding:
+   ${exit.outputDir}/90-vpn-failover.conf -> /etc/sysctl.d/90-vpn-failover.conf
+   sysctl --system
 
 3. Установить файлы из каталога ${exit.outputDir}:
    ${exit.outputDir}/wg-exit.conf -> /etc/wireguard/wg-exit.conf
@@ -2194,8 +2283,9 @@ ${mikrotikPolicyBlock}`;
 1. Install:
    apt update && apt install -y wireguard bird2 conntrack
 
-2. Enable forwarding:
-   sysctl -w net.ipv4.ip_forward=1
+2. Enable persistent forwarding:
+   ${exit.outputDir}/90-vpn-failover.conf -> /etc/sysctl.d/90-vpn-failover.conf
+   sysctl --system
 
 3. Install files from ${exit.outputDir}:
    ${exit.outputDir}/wg-exit.conf -> /etc/wireguard/wg-exit.conf
@@ -2234,15 +2324,12 @@ SERVER1
 1. Установить:
    apt update && apt install -y wireguard bird2 conntrack
 
-2. Включить forwarding:
-   sysctl -w net.ipv4.ip_forward=1
-
-3. Рекомендуемый rp_filter:
-   sysctl -w net.ipv4.conf.all.rp_filter=2
-   sysctl -w net.ipv4.conf.default.rp_filter=2
+2. Включить постоянный forwarding и rp_filter:
+   server1/90-vpn-failover.conf -> /etc/sysctl.d/90-vpn-failover.conf
+   sysctl --system
 ${sourceMode === "generate" ? `\n3a. Для сгенерированного AWG нужен установленный AmneziaWG runtime + amneziawg-tools (awg/awg-quick). Обычный wg-quick не предназначен для параметров Jc/Jmin/Jmax/S*/H*.\n` : ""}
 4. Установить:
-${server1ExitInstallRu}${wgInInstallRu}
+${server1ExitInstallRu}${wgInInstallRu}${generatedAwgInstallRu}${generatedWgInClientRu}
    server1/bird.conf                    -> /etc/bird/bird.conf
    server1/awg-policy-routing.service   -> /etc/systemd/system/awg-policy-routing.service
    server1/vpn-failover-firewall.service -> /etc/systemd/system/vpn-failover-firewall.service
@@ -2250,12 +2337,12 @@ ${server1ExitInstallRu}${wgInInstallRu}
    server1/vpn-exit-monitor.service     -> /etc/systemd/system/vpn-exit-monitor.service
 
 5. Права:
-${server1ExitChmodRu}${hasWgInConfig ? "\n   chmod 600 /etc/wireguard/" + wgInIf + ".conf" : ""}
+${server1ExitChmodRu}${hasWgInConfig ? "\n   chmod 600 /etc/wireguard/" + wgInIf + ".conf" : ""}${sourceMode === "generate" ? "\n   chmod 600 /etc/amnezia/amneziawg/" + awgIf + ".conf" : ""}
    chmod 755 /usr/local/sbin/vpn-exit-monitor.sh
 
 6. Запустить:
    systemctl daemon-reload
-${server1ExitStartRu}${wgInStartRu}
+${sourceMode === "generate" ? "   systemctl enable --now awg-quick@" + awgIf + "\n" : ""}${server1ExitStartRu}${wgInStartRu}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
    # unit явно открывает INPUT: AWG UDP/${awgPort}, ${hasWgInConfig ? "wg-in UDP/" + wgInPort + ", " : ""}BFD UDP/3784
@@ -2305,24 +2392,25 @@ SERVER1
 1. Install:
    apt update && apt install -y wireguard bird2 conntrack
 
-2. Enable forwarding:
-   sysctl -w net.ipv4.ip_forward=1
-
-3. Recommended rp_filter:
-   sysctl -w net.ipv4.conf.all.rp_filter=2
-   sysctl -w net.ipv4.conf.default.rp_filter=2
+2. Enable persistent forwarding and rp_filter:
+   server1/90-vpn-failover.conf -> /etc/sysctl.d/90-vpn-failover.conf
+   sysctl --system
 ${sourceMode === "generate" ? `\n3a. Generated AWG requires an AmneziaWG runtime plus amneziawg-tools (awg/awg-quick). Standard wg-quick is not intended for Jc/Jmin/Jmax/S*/H* parameters.\n` : ""}
 4. Install:
-${server1ExitInstallEn}${wgInInstallEn}
+${server1ExitInstallEn}${wgInInstallEn}${generatedAwgInstallEn}${generatedWgInClientEn}
    server1/bird.conf -> /etc/bird/bird.conf
    server1/awg-policy-routing.service -> /etc/systemd/system/awg-policy-routing.service
    server1/vpn-failover-firewall.service -> /etc/systemd/system/vpn-failover-firewall.service
    server1/vpn-exit-monitor.sh -> /usr/local/sbin/vpn-exit-monitor.sh
    server1/vpn-exit-monitor.service -> /etc/systemd/system/vpn-exit-monitor.service
 
-5. Start:
+5. Permissions:
+${server1ExitChmodRu}${hasWgInConfig ? "\n   chmod 600 /etc/wireguard/" + wgInIf + ".conf" : ""}${sourceMode === "generate" ? "\n   chmod 600 /etc/amnezia/amneziawg/" + awgIf + ".conf" : ""}
+   chmod 755 /usr/local/sbin/vpn-exit-monitor.sh
+
+6. Start:
    systemctl daemon-reload
-${server1ExitStartRu}${wgInStartEn}
+${sourceMode === "generate" ? "   systemctl enable --now awg-quick@" + awgIf + "\n" : ""}${server1ExitStartRu}${wgInStartEn}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
    # unit explicitly permits INPUT: AWG UDP/${awgPort}, ${hasWgInConfig ? "wg-in UDP/" + wgInPort + ", " : ""}BFD UDP/3784

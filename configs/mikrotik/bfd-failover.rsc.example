@@ -25,8 +25,9 @@ add interfaces=<MT_AWG_IF> addresses=<AWG_SERVER_IP>/32 min-rx=500ms min-tx=500m
 add check-gateway=bfd comment="VPN_BFD_PRIMARY" disabled=no distance=1 dst-address=0.0.0.0/0 gateway=<AWG_SERVER_IP>%<MT_AWG_IF> routing-table=<MT_ROUTE_TABLE> scope=30 target-scope=10
 
 /ip firewall mangle
-add chain=prerouting action=mark-connection new-connection-mark="CM_VPN" passthrough=yes connection-state=new dst-address-type=!local dst-address-list="<DST_ADDRESS_LIST>" comment="VPN_POLICY_MARK"
-add chain=prerouting action=mark-routing new-routing-mark="<MT_ROUTE_TABLE>" passthrough=yes connection-mark="CM_VPN" dst-address-type=!local in-interface-list=!<WAN_INTERFACE_LIST> comment="VPN_POLICY_ROUTE"
+add chain=prerouting action=mark-connection new-connection-mark="CM_VPN" passthrough=yes connection-state=new connection-mark=no-mark dst-address-type=!local dst-address-list="<DST_ADDRESS_LIST>" comment="VPN_POLICY_MARK"
+# The incoming AWG interface must be excluded: reply packets retain CM_VPN.
+add chain=prerouting action=mark-routing new-routing-mark="<MT_ROUTE_TABLE>" passthrough=yes connection-mark="CM_VPN" dst-address-type=!local in-interface-list=!<WAN_INTERFACE_LIST> in-interface=!"<MT_AWG_IF>" comment="VPN_POLICY_ROUTE"
 
 # RouterOS v7 requires new-routing-mark to reference an existing FIB table.
 # Current default policy-rules order is:
