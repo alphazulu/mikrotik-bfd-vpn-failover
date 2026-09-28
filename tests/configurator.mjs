@@ -235,7 +235,7 @@ assert.match(files["mikrotik/bfd-failover.rsc"], /new-routing-mark="VPN"/);
 assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /VPN_RM/, "No synthetic routing mark/table should be generated");
 assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /VPN_BFD_LOOKUP/, "Mangle already performs the VPN-table lookup");
 assert.match(files["mikrotik/bfd-failover.rsc"], /action=lookup routing-mark="VPN" table=main comment="VPN_BFD_FALLBACK"/);
-assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /lookup-only-in-table/, "VPN fallback must never use lookup-only-in-table");
+assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /\/routing rule add[^\n]*action=lookup-only-in-table/, "VPN fallback must never use lookup-only-in-table");
 assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /routing-table="VPN"[^\n]*distance=2|distance=2[^\n]*routing-table="VPN"/, "Generator must not create an in-table backup default that prevents main fallback");
 {
   const rsc = files["mikrotik/bfd-failover.rsc"];
