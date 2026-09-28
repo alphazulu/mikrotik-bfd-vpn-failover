@@ -1520,9 +1520,11 @@ function generateFiles() {
         " passthrough=yes connection-state=new dst-address-type=!local dst-address-list=" + qRouter(listName) +
         " comment=" + qRouter("VPN_POLICY_MARK") + "\n";
     }
-    // In RouterOS v7 new-routing-mark must refer to an existing routing table.
-    // Use the actual table name. With the default policy-rules order, a failed
-    // mangle-table lookup continues to user rules and then main.
+    // RouterOS v7 requires new-routing-mark to reference an existing FIB table.
+    // Default routing-decision order is:
+    // mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main.
+    // If the marked-table lookup fails because the BFD default is inactive,
+    // RouterOS continues through the remaining policy rules.
     mikrotikPolicyBlock += "add chain=prerouting action=mark-routing new-routing-mark=" + qRouter(mtTable) +
       " passthrough=yes connection-mark=" + qRouter(connmark) +
       " dst-address-type=!local in-interface-list=!" + mtWanList +
@@ -1531,13 +1533,19 @@ function generateFiles() {
     if (dedicatedMtTable) {
       mikrotikPolicyBlock += `
 # Explicit fallback after the mangle lookup in the VPN table fails.
-# The default RouterOS policy order is mangle -> ... -> user -> main.
+# RouterOS current default policy-rules order:
+# mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main.
+# action=lookup is intentional: unlike lookup-only-in-table it permits
+# processing to continue if main itself has no matching route.
+#
 # IMPORTANT when migrating an existing router: remove/disable any backup
 # default route already present inside this policy table. If such a route
-# remains active, the mangle lookup succeeds there and this fallback rule
-# will never be reached.
-# This user rule makes the fallback to main explicit without inventing
-# a second routing mark/table.
+# remains active, the mangle lookup succeeds there and user/main fallback
+# is never reached.
+#
+# Do not replace this rule with action=lookup-only-in-table.
+# If /routing/settings policy-rules was customized, verify that mangle is
+# evaluated before user/main and that main remains reachable in the chain.
 :if ([:len [/routing rule find where comment="VPN_BFD_FALLBACK"]] = 0) do={
     /routing rule add action=lookup routing-mark=${qRouter(mtTable)} table=main comment="VPN_BFD_FALLBACK"
 }
