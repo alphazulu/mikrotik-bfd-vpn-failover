@@ -28,14 +28,26 @@ add check-gateway=bfd comment="VPN_BFD_PRIMARY" disabled=no distance=1 dst-addre
 add chain=prerouting action=mark-connection new-connection-mark="CM_VPN" passthrough=yes connection-state=new dst-address-type=!local dst-address-list="<DST_ADDRESS_LIST>" comment="VPN_POLICY_MARK"
 add chain=prerouting action=mark-routing new-routing-mark="<MT_ROUTE_TABLE>" passthrough=yes connection-mark="CM_VPN" dst-address-type=!local in-interface-list=!<WAN_INTERFACE_LIST> comment="VPN_POLICY_ROUTE"
 
-# RouterOS v7 requires new-routing-mark to reference an existing routing table.
-# The mangle lookup tries <MT_ROUTE_TABLE> first. If its BFD route is inactive,
-# the lookup fails and processing continues to user rules.
+# RouterOS v7 requires new-routing-mark to reference an existing FIB table.
+# Current default policy-rules order is:
+# mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main.
+#
+# The mangle lookup tries <MT_ROUTE_TABLE> first. If its BFD default becomes
+# inactive, that lookup fails and RouterOS continues through the remaining
+# policy rules. The explicit user rule below performs lookup in main.
+#
+# action=lookup is intentional. Do NOT use lookup-only-in-table for fallback:
+# lookup allows processing to continue if the selected table has no route,
+# whereas lookup-only-in-table is the no-fallback form used to make traffic
+# unreachable when that table cannot resolve the destination.
 #
 # Migration note: remove/disable any old backup default route inside
 # <MT_ROUTE_TABLE> (for example a distance=2 route to the WAN gateway).
-# If it remains active, lookup succeeds inside <MT_ROUTE_TABLE> and the
-# fallback rule below is never reached.
+# If it remains active, the mangle lookup succeeds inside <MT_ROUTE_TABLE> and
+# fallback to user/main is never reached.
+#
+# If /routing/settings policy-rules was customized, verify that mangle is
+# evaluated before user/main and that main remains in the decision chain.
 #
 # Make the fallback to main explicit:
 :if ([:len [/routing rule find where comment="VPN_BFD_FALLBACK"]] = 0) do={
