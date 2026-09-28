@@ -1,20 +1,22 @@
-# AmneziaWG 3.0 / 3.1 generation
+# Генерация AmneziaWG 3.0 / 3.1
 
-The configurator provides three AmneziaWG generation profiles:
+[English version](AWG3.en.md)
 
-- **AWG 2.0** — previous profile;
-- **AWG 3.0 compatibility** — Header Protection + timing/padding without `RandomTrailers` / `DisableCookies`;
-- **AWG 3.1** — recommended and selected by default.
+Конфигуратор поддерживает три профиля генерации AmneziaWG:
 
-## Important note about 3.0
+- **AWG 2.0** — предыдущий профиль;
+- **AWG 3.0 compatibility** — Header Protection + timing/padding без `RandomTrailers` / `DisableCookies`;
+- **AWG 3.1** — рекомендуемый и выбранный по умолчанию профиль.
 
-In the current official AmneziaVPN source, the `awgV3` protocol marker is already `3.1`. Any configuration containing `HeaderProtectionKey` or the other AWG3 markers is classified by the current client as AWG 3.1.
+## Важное замечание о версии 3.0
 
-Therefore **AWG 3.0 compatibility** in this project is a compatibility preset for the earlier 3.x parameter set, not a separate current protocol ID.
+В текущем официальном коде AmneziaVPN маркер `awgV3` уже имеет значение `3.1`. Любой набор с `HeaderProtectionKey` или другими AWG3-параметрами определяется текущим клиентом как AWG 3.1.
 
-## Generated AWG 3.1 parameters
+Поэтому пункт **AWG 3.0 compatibility** в этом проекте — это совместимый профиль для более раннего набора 3.x-параметров, а не отдельный современный protocol ID.
 
-The configurator uses values aligned with the current self-hosted stack:
+## AWG 3.1 — генерируемые параметры
+
+Конфигуратор использует совместимые с текущим self-hosted стеком значения:
 
 ```ini
 Jc = <random 4..6>
@@ -44,25 +46,34 @@ RandomTrailers = on
 DisableCookies = on
 ```
 
-The generated client uses:
+В клиентском профиле:
 
 ```ini
 PersistentKeepalive = 25-35
 ```
 
-## Why H1-H4 stay 1/2/3/4
+## Почему H1-H4 = 1/2/3/4
 
-With Header Protection enabled, current AmneziaWG guidance recommends compatibility values `H1=1`, `H2=2`, `H3=3`, `H4=4`. Message type hiding is performed by Header Protection instead.
+При включённом Header Protection текущая документация AmneziaWG рекомендует стандартные compatibility values:
 
-This also avoids the known current AWG 3.1 classifier issue where ranged H values combined with `RandomTrailers=on` can misclassify transport packets and cause silent loss.
+```text
+H1=1
+H2=2
+H3=3
+H4=4
+```
 
-The generator therefore does **not** emit ranged H values for AWG 3.x.
+Тип сообщения скрывается Header Protection, поэтому отдельная рандомизация H не нужна.
 
-## Why S1-S4 are 12
+Это также обходит известную проблему текущих AWG 3.1 реализаций: диапазоны H1-H3 вместе с `RandomTrailers=on` могут приводить к ошибочной классификации transport-пакетов и скрытым потерям.
 
-Header Protection uses the first 12 bytes of the matching S-prefix as its nonce, so every `S1-S4` value must be at least 12.
+Поэтому генератор **не создаёт ranged H** для AWG 3.x.
 
-Using equal S values is also the safer configuration with `RandomTrailers=on`. The generator uses:
+## Почему S1-S4 = 12
+
+`HeaderProtectionKey` использует первые 12 байт соответствующего S-префикса как nonce. Поэтому при Header Protection каждый `S1-S4` должен быть не меньше 12.
+
+Для AWG 3.1 также безопаснее использовать одинаковые значения S при `RandomTrailers=on`. Текущий генератор использует:
 
 ```text
 S1=S2=S3=S4=12
@@ -70,59 +81,81 @@ S1=S2=S3=S4=12
 
 ## HeaderProtectionKey
 
-The key is:
+Ключ:
 
-- generated with `crypto.getRandomValues()`;
-- 32 bytes long;
-- encoded as base64;
-- identical in the generated server and client configs;
-- masked in previews together with PrivateKey/PresharedKey.
+- генерируется через `crypto.getRandomValues()`;
+- имеет длину 32 байта;
+- хранится в base64;
+- одинаков на server/client конфигурациях;
+- маскируется в preview вместе с PrivateKey/PresharedKey.
 
-Treat the downloaded value as secret material.
+После скачивания bundle его необходимо считать секретом.
 
 ## CPS I1-I5
 
-`I1-I5` are available in the Advanced section but are empty by default.
+Параметры `I1-I5` доступны в Advanced-разделе, но по умолчанию остаются пустыми.
 
-A CPS signature should imitate a deliberate target protocol; reusing one static template across every deployment can itself become a signature. Different `awg-quick` versions have also historically differed in CPS-string parsing.
+Причина: CPS должен имитировать конкретный протокол, а общий статический шаблон для всех установок сам становится узнаваемой сигнатурой. Кроме того, разные версии `awg-quick` исторически имели различия при разборе CPS-строк.
 
-When supplied manually, I1-I5 are emitted into the client AWG config. The server config intentionally omits them, matching the current self-hosted layout.
+Если `I1-I5` заданы вручную, они добавляются в клиентский AWG config. Server-side config их намеренно не генерирует, что соответствует текущей self-hosted схеме Amnezia.
 
 ## AWG 3.0 compatibility
 
-This profile emits Header Protection plus the timing/padding parameters but omits:
+Этот профиль генерирует:
+
+- `HeaderProtectionKey`;
+- `ContentPaddingAddition`;
+- `RekeyAfterTime`;
+- `RekeyTimeout`;
+- `RejectAfterTime`;
+- `KeepaliveTimeout`;
+- `MaxHandshakeAttempts`;
+- `S1-S4=12`;
+- `H1-H4=1/2/3/4`.
+
+Он **не** добавляет:
 
 ```ini
 RandomTrailers =
 DisableCookies =
 ```
 
-and, like other AWG 3.x profiles in the current client, uses:
+и, как другие AWG 3.x профили в текущем клиенте, использует диапазон:
 
 ```ini
 PersistentKeepalive = 25-35
 ```
 
-For new installations, AWG 3.1 is preferred.
+Для новых установок предпочтителен профиль AWG 3.1.
 
 ## Runtime
 
-AWG 3.x requires a runtime/toolchain that understands the new configuration fields:
+Для AWG 3.x нужен runtime/toolchain, который понимает новые поля конфигурации:
 
-- current `amneziawg-tools`;
-- current `amneziawg-go`, or a compatible AWG 3.1 kernel module.
+- актуальный `amneziawg-tools`;
+- актуальный `amneziawg-go` либо совместимый AWG 3.1 kernel module.
 
-Do not mix a new `awg/awg-quick` tool with an old kernel module: the interface may be created while `awg setconf` fails with `Invalid argument`.
+Не смешивайте новый `awg/awg-quick` со старым kernel module: возможна ситуация, когда интерфейс создаётся, но `awg setconf` завершается `Invalid argument`.
 
-Use a current 3.1 stack for the AWG 3.1 profile.
+Для AWG 3.1 рекомендуется использовать актуальный релиз 3.1 стека, а не ранние сборки.
 
-## Verification
+## Проверка
 
-After installation:
+После установки:
 
 ```bash
 awg show
 awg-quick strip <config>
 ```
 
-Verify that server and client agree on HeaderProtectionKey, H1-H4, S1-S4, RandomTrailers, and DisableCookies, and that the peer keys match.
+Проверьте, что server и client имеют одинаковые:
+
+```text
+HeaderProtectionKey
+H1-H4
+S1-S4
+RandomTrailers
+DisableCookies
+```
+
+и что ключи peer соответствуют друг другу.

@@ -75,7 +75,7 @@ Server1
 
 Профиль AWG 3.0 создаёт Header Protection и timing/padding параметры, но не добавляет 3.1-only toggles `RandomTrailers` / `DisableCookies`. Профиль AWG 3.1 добавляет их и использует актуальные self-hosted defaults.
 
-Подробно: [AWG 3.0/3.1 generation](docs/AWG3.ru.md).
+Подробно: [Генерация AWG 3.0/3.1](docs/AWG3.md).
 
 ### Несколько Server2
 
@@ -92,8 +92,8 @@ all DOWN    -> main     -> Server1 WAN
 
 BFD контролирует каждый выход независимо. `vpn-exit-monitor` очищает VPN conntrack только когда фактически выбранный выход меняется; отказ или восстановление неактивного backup-сервера не трогает текущие соединения.
 
-Подробно: [Несколько Server2 и приоритетный failover](docs/MULTI_EXIT.ru.md).  
-English: [Multiple Server2 exits and prioritized failover](docs/MULTI_EXIT.md).
+Подробно: [Несколько Server2 и приоритетный failover](docs/MULTI_EXIT.md).
+English: [Multiple Server2 exits and prioritized failover](docs/MULTI_EXIT.en.md).
 
 ### Режимы маршрутизации MikroTik
 
@@ -328,17 +328,24 @@ Netwatch, рекурсивный default через публичный probe-hos
 ├── LICENSE
 ├── docs/
 │   ├── ARCHITECTURE.md
+│   ├── ARCHITECTURE.en.md
 │   ├── INSTALL.md
+│   ├── INSTALL.en.md
 │   ├── OPERATIONS.md
+│   ├── OPERATIONS.en.md
+│   ├── AWG3.md / AWG3.en.md
 │   ├── MULTI_EXIT.md
-│   ├── MULTI_EXIT.ru.md
+│   ├── MULTI_EXIT.en.md
 │   ├── SECURITY.md
-│   └── VARIABLES.md
+│   ├── SECURITY.en.md
+│   ├── VARIABLES.md
+│   └── VARIABLES.en.md
 ├── configs/
 │   ├── mikrotik/
 │   ├── server1/
 │   └── server2/
 └── configurator/
+    ├── README.md / README.en.md
     ├── index.html
     ├── app.js
     └── style.css
@@ -349,7 +356,9 @@ Netwatch, рекурсивный default через публичный probe-hos
 - [Архитектура](docs/ARCHITECTURE.md)
 - [Установка и настройка](docs/INSTALL.md)
 - [Эксплуатация и тестирование](docs/OPERATIONS.md)
-- [Несколько Server2 и приоритеты](docs/MULTI_EXIT.ru.md)
+- [Несколько Server2 и приоритеты](docs/MULTI_EXIT.md)
+- [Генерация AWG 3.0/3.1](docs/AWG3.md)
+- [Руководство конфигуратора](configurator/README.md)
 - [Безопасность публикации](docs/SECURITY.md)
 - [Список placeholders](docs/VARIABLES.md)
 - [Краткий индекс полного руководства](FULL_GUIDE.md)
@@ -385,7 +394,7 @@ systemctl start wg-quick@wg-exit
 
 ## Синхронизация русской и английской документации
 
-`README.md` и `README.en.md` считаются двумя равноправными языковыми версиями основной документации.
+Русский `README.md` — основной документ. Английский `README.en.md` — полный перевод. Во всех разделах `docs/` и `configurator/` файл без языкового суффикса содержит русский текст, а `.en.md` — английский.
 
 **При каждом изменении функционала обе версии должны обновляться в одном наборе изменений.**
 

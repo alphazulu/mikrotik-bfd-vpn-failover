@@ -1,8 +1,10 @@
-# Multiple Server2 exits and prioritized failover
+# Несколько Server2 и приоритетный failover
 
-The project supports multiple exit Server2 nodes at the same time.
+[English version](MULTI_EXIT.en.md)
 
-Server1 creates a **separate WireGuard interface for each Server2**:
+Проект поддерживает несколько выходных Server2 одновременно.
+
+Server1 поднимает **отдельный WireGuard-интерфейс к каждому Server2**:
 
 ```text
 MikroTik / VPN clients
@@ -19,13 +21,13 @@ MikroTik / VPN clients
         +---------------> Server1 WAN / main
 ```
 
-A lower numeric priority means a more preferred exit.
+Меньшее числовое значение означает более высокий приоритет.
 
-## Why every Server2 gets a separate WireGuard interface
+## Почему отдельный WireGuard-интерфейс на каждый Server2
 
-Each exit peer needs to accept `AllowedIPs = 0.0.0.0/0` on Server1.
+Каждый выходной peer должен принимать `AllowedIPs = 0.0.0.0/0` со стороны Server1.
 
-Multiple peers claiming the same `0.0.0.0/0` on one WireGuard interface do not provide an unambiguous peer selection for outgoing packets. The project therefore uses one interface per exit:
+Несколько peers с одинаковым `0.0.0.0/0` на одном WireGuard-интерфейсе не дают однозначного выбора peer для исходящего пакета. Поэтому проект использует отдельный интерфейс на каждый выход:
 
 ```text
 wg-exit
@@ -34,11 +36,11 @@ wg-exit3
 ...
 ```
 
-Every interface also uses its own point-to-point transfer subnet.
+Для каждого интерфейса используется собственная point-to-point transfer subnet.
 
-## Priority mapping
+## Как задаётся приоритет
 
-Example:
+Пусть в конфигураторе указаны:
 
 | Server2 | Priority | Server1 interface |
 |---|---:|---|
@@ -46,7 +48,7 @@ Example:
 | Server2-B | 20 | `wg-exit2` |
 | Server2-C | 30 | `wg-exit3` |
 
-With Linux base routing table `200`, the configurator assigns:
+Если базовая Linux routing table равна `200`, конфигуратор назначит:
 
 ```text
 priority 10 -> table 200
@@ -54,11 +56,11 @@ priority 20 -> table 201
 priority 30 -> table 202
 ```
 
-Priority values can be any positive integers. Only their ordering matters. Duplicate priorities are rejected.
+Сами числовые значения priority могут быть любыми положительными целыми. Важен их порядок. Одинаковые priority запрещены.
 
 ## Linux policy routing
 
-For `awg0`, Server1 receives ordered rules such as:
+Для `awg0` Server1 получает последовательность правил:
 
 ```bash
 ip rule add priority 1000 iif awg0 lookup 200
@@ -66,27 +68,31 @@ ip rule add priority 1001 iif awg0 lookup 201
 ip rule add priority 1002 iif awg0 lookup 202
 ```
 
-If table `200` has no route, Linux continues with table `201`, then `202`, and finally the normal `main` table when all Server2 exits are unavailable.
+Linux проверяет таблицы по порядку.
 
-The optional `wg-in` interface receives the same exit order using a separate rule-priority range.
+Если в table `200` BFD-маршрут отсутствует, lookup продолжается в table `201`. Если там также нет маршрута — в table `202`. Если ни один Server2 не доступен, обработка доходит до обычного `main`, и трафик выходит через WAN Server1.
 
-## Why one BFD session per Server2 is sufficient here
+Для дополнительного `wg-in` генерируется аналогичная последовательность правил с отдельным диапазоном priority.
 
-In this architecture each Server2 is reached from Server1 through the Internet using its own public WireGuard endpoint. BFD inside each `wg-exit*` therefore traverses the same Internet path required by that inter-server tunnel.
+## Почему достаточно отдельной BFD-сессии на каждый Server2
 
-Each exit can be evaluated independently:
+В этой архитектуре каждый Server2 доступен с Server1 через Internet по своему публичному WireGuard endpoint. То есть BFD внутри `wg-exit*` проходит поверх того же Internet-path, который нужен для самого межсерверного соединения.
+
+Поэтому состояние каждого выхода определяется независимо:
 
 ```text
-Internet path to Server2-A + wg-exit  + BFD UP -> exit A available
-Internet path to Server2-B + wg-exit2 + BFD UP -> exit B available
-Internet path to Server2-C + wg-exit3 + BFD UP -> exit C available
+Internet-path до Server2-A + wg-exit  + BFD UP -> exit A доступен
+Internet-path до Server2-B + wg-exit2 + BFD UP -> exit B доступен
+Internet-path до Server2-C + wg-exit3 + BFD UP -> exit C доступен
 ```
 
-A recursive route through an unrelated public ping target is intentionally not used: it would add a third-party control point and test a path other than the actual `wg-exit` path. If Server2 is later reachable through a private underlay, or NAT/arbitrary external destination reachability must be validated independently, this design assumption should be revisited.
+Дополнительный recursive route через внешний ping-host здесь намеренно не используется: он добавил бы стороннюю контрольную точку и проверял бы не тот конкретный путь, по которому построен `wg-exit`. Если в будущем Server2 будет доступен через приватную underlay-сеть или понадобится отдельно контролировать NAT/произвольный внешний Internet target, это допущение надо пересмотреть.
 
 ## BIRD
 
-Each Server2 has its own BIRD IPv4 table and its own Linux kernel table on Server1:
+На Server1 каждому Server2 соответствует собственная BIRD IPv4 table и отдельный Linux kernel table.
+
+Пример для трёх выходов:
 
 ```text
 exit4_1 -> Linux table 200 -> wg-exit
@@ -94,21 +100,33 @@ exit4_2 -> Linux table 201 -> wg-exit2
 exit4_3 -> Linux table 202 -> wg-exit3
 ```
 
-Every default route is BFD-controlled, so each exit can independently appear or disappear without affecting the other tables.
+Каждый default route имеет атрибут `bfd`.
 
-## BFD firewall
+Таким образом BFD-сессии независимы:
 
-Every BFD session is local control-plane traffic and therefore must be allowed in `INPUT`.
+```text
+Server2-A DOWN -> default исчезает только из table 200
+Server2-B DOWN -> default исчезает только из table 201
+Server2-C DOWN -> default исчезает только из table 202
+```
 
-The configurator adds one UDP/3784 INPUT allow on Server1 for every `wg-exit*`, constrained to the exact Server1/Server2 tunnel addresses. Each Server2 `wg-exit.conf` allows BFD from Server1 and also permits the public WireGuard listen port.
+Отказ резервного Server2 не влияет на активный путь, пока более приоритетный выход остаётся доступен.
 
-There is no need to open UDP/3784 globally; every rule is scoped to the specific interface and peer.
+## Firewall для BFD
+
+Каждая BFD-сессия — это локальный control-plane traffic, поэтому она должна быть разрешена в `INPUT`.
+
+Конфигуратор добавляет на Server1 отдельный UDP/3784 INPUT allow для каждого `wg-exit*`, ограниченный точными tunnel IP Server1/Server2. На каждом Server2 соответствующий `wg-exit.conf` добавляет INPUT allow для BFD от Server1, а также allow для публичного WireGuard listen port.
+
+Отказ одного backup-выхода не требует открывать UDP/3784 глобально: правила создаются отдельно для каждого интерфейса и peer.
 
 ## Conntrack
 
-The route monitor tracks the **selected exit**, not every BIRD event.
+`vpn-exit-monitor.sh` больше не реагирует на любое изменение любого BIRD route.
 
-It flushes VPN-client conntrack only when the effective path actually changes, for example:
+Он вычисляет **фактически выбранный выход** — первую routing table из списка приоритетов, в которой есть BIRD default route.
+
+Conntrack VPN-клиентов очищается только если выбранный путь действительно изменился:
 
 ```text
 Server2-A -> Server2-B
@@ -117,36 +135,70 @@ Server2-C -> main
 main      -> Server2-A
 ```
 
-A lower-priority backup flapping while the primary remains healthy does not trigger a conntrack flush.
+Если, например, Server2-C перезапустился, пока Server2-A остаётся активным, conntrack не очищается.
 
 ## Failback
 
-Failback follows the same priority ordering. When a more preferred Server2 becomes available again, its table is selected first and new traffic automatically returns to it.
+Failback также следует priority order.
 
-## All Server2 exits unavailable
+Например:
 
-When none of the dedicated tables contains a BIRD default route, Linux continues policy lookup into `main`, so Server1 WAN remains the final fallback.
+```text
+A priority 10 - DOWN
+B priority 20 - UP
+C priority 30 - UP
 
-## Per-exit requirements
+selected = B
+```
 
-Every additional Server2 needs:
+После возврата A:
 
-- a unique priority;
-- a unique Server1 WireGuard interface name;
-- a distinct transfer subnet;
-- Server1 and Server2 tunnel addresses;
+```text
+A priority 10 - UP
+
+selected = A
+```
+
+Server1 автоматически возвращает новый трафик на A, а monitor очищает VPN conntrack один раз при фактической смене selected exit.
+
+## Все Server2 недоступны
+
+Если default route отсутствует во всех выделенных таблицах, Linux policy routing продолжает обработку правил и доходит до `main`.
+
+Итоговый путь:
+
+```text
+VPN client
+  -> Server1
+  -> table 200: no route
+  -> table 201: no route
+  -> table 202: no route
+  -> main
+  -> Server1 WAN
+  -> Internet
+```
+
+## Требования к каждому дополнительному Server2
+
+Для каждого выхода нужны:
+
+- уникальный priority;
+- уникальное имя WireGuard-интерфейса на Server1;
+- отдельная transfer subnet;
+- Server1 tunnel address;
+- Server2 tunnel address;
 - Server2 public endpoint;
 - UDP port;
-- WireGuard keys for both sides;
+- WireGuard key pair обеих сторон;
 - optional PresharedKey;
 - Server2 WAN interface;
 - optional MTU.
 
-The configurator can import both Server1-side and Server2-side WireGuard configs for every additional exit.
+Конфигуратор может импортировать Server1-side и Server2-side WireGuard configs для каждого дополнительного выхода.
 
-## Generated layout
+## Сгенерированные файлы
 
-Two exits produce a structure similar to:
+Для двух Server2 пример структуры:
 
 ```text
 server1/
@@ -167,9 +219,9 @@ server2-2/
   bird.conf
 ```
 
-## Verification
+## Проверка
 
-For three exits:
+Для трёх выходов:
 
 ```bash
 birdc show bfd sessions
@@ -180,4 +232,12 @@ ip route show table 202
 journalctl -t vpn-exit-monitor -f
 ```
 
-Test each failure stage in order, then restore the exits and confirm that the system automatically returns to the most preferred available Server2.
+Тестируйте последовательно:
+
+1. отключить Server2 с самым высоким приоритетом;
+2. убедиться, что выбран следующий;
+3. отключить второй;
+4. убедиться, что выбран третий;
+5. отключить все Server2 и проверить fallback через Server1 WAN;
+6. включать Server2 обратно в обратном порядке;
+7. убедиться, что система автоматически возвращается на самый высокий доступный priority.

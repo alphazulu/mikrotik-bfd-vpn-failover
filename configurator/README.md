@@ -1,129 +1,91 @@
-# Local-only configurator
+# Локальный конфигуратор
 
-This directory contains a static browser-only generator for the architecture documented by this repository.
+[English version](README.en.md)
 
-## Privacy properties
+В этом каталоге расположен статический генератор конфигураций для описанной в репозитории схемы. Он работает в браузере без сервера.
 
-- no backend;
-- no analytics;
-- no external JavaScript or CSS;
-- no CDN resources;
-- no cookies;
-- no localStorage/sessionStorage/IndexedDB;
-- no service worker;
-- imported files are read with the browser File API;
-- Content Security Policy contains `connect-src 'none'`, so application JavaScript cannot make network connections.
+## Обработка данных
 
-Opening the GitHub Pages site itself naturally downloads the static HTML/CSS/JS files from GitHub Pages. Imported WireGuard/AmneziaWG configuration data and keys are never transmitted by the application.
+- Нет backend, аналитики, cookies, localStorage, sessionStorage, IndexedDB и Service Worker.
+- Нет внешних JavaScript, CSS или ресурсов CDN.
+- Импорт идёт через File API браузера; CSP содержит `connect-src 'none'`, поэтому JavaScript приложения не может устанавливать сетевые соединения.
 
-## Generated files
+При открытии GitHub Pages браузер получает статические HTML, CSS и JS с Pages. Импортированные файлы WireGuard/AmneziaWG и ключи приложение не передаёт. Скачанный архив может содержать настоящие приватные ключи — храните его как секрет.
 
-The configurator produces:
+## Выходные файлы
 
-- one Server1 WireGuard config per exit (`wg-exit.conf`, `wg-exit2.conf`, ...);
-- persistent forwarding/rp_filter sysctl configuration for Server1 and forwarding configuration for every Server2;
-- Server1 BIRD configuration;
-- Server1 policy-routing systemd unit;
-- Server1 firewall unit with explicit INPUT permissions for the AWG UDP listen port, optional wg-in listen port, and BFD UDP/3784 from MikroTik and every Server2 exit;
-- Server1 event-driven conntrack monitor and service;
-- one `wg-exit.conf` and BIRD responder configuration for every Server2, including an explicit WAN-side INPUT rule for its WireGuard UDP listen port and an inner INPUT rule for BFD UDP/3784;
-- MikroTik RouterOS BFD/failover script with a narrow `chain=input` BFD UDP/3784 allow plus either address-list/mangle policy routing or direct destination routes;
-- installation instructions;
-- a local `.tar` bundle containing the complete generated set.
+Генератор создаёт:
 
-The generated bundle may contain real private keys imported by the user and must therefore be treated as sensitive.
+- отдельный конфиг Server1 WireGuard для каждого выхода (`wg-exit.conf`, `wg-exit2.conf` и т. д.);
+- постоянные sysctl-настройки forwarding/rp_filter для Server1 и forwarding для каждого Server2;
+- конфиг BIRD и systemd unit для policy routing на Server1;
+- firewall unit Server1 с явными разрешениями `INPUT` для внешнего AWG UDP-порта, необязательного порта `wg-in` и BFD UDP/3784 от MikroTik и всех Server2;
+- событийный монитор conntrack и его unit;
+- `wg-exit.conf` и конфиг BIRD для каждого Server2 с правилами `INPUT` для внешнего UDP-порта WireGuard и внутреннего BFD UDP/3784;
+- RouterOS-скрипт BFD/failover с узким правилом `INPUT` для BFD и, на выбор, маршрутизацией address-list/mangle либо прямыми маршрутами к назначениям;
+- инструкции по установке и локальный `.tar` со всеми созданными файлами.
 
-## Language
+## Язык
 
-The UI supports Russian and English from one implementation so both interfaces stay functionally identical.
+По умолчанию интерфейс русский. Русский и английский варианты используют одну реализацию и одинаковые функции. Язык создаваемого `INSTALL.txt` соответствует выбранному языку интерфейса.
 
+## Маршрутизация на MikroTik
 
-## MikroTik routing modes
+Доступны два взаимоисключающих режима:
 
-The UI offers two mutually exclusive modes:
+- **Address-list + mangle.** Генерируются метки соединений, отдельная таблица и выборочная очистка conntrack. Routing mark совпадает с именем таблицы. Если BFD-маршрут недоступен, явное `/routing rule` разрешает переход к `main`. Общие fasttrack-правила ограничиваются соединениями без метки.
+- **Прямые маршруты.** Генерируются контролируемые BFD маршруты в `main` для указанных IPv4/CIDR-назначений. Mangle и метки не создаются.
 
-- **Address-list + mangle** — generates connection marks, a dedicated routing table, and selective conntrack cleanup. The routing mark is the existing table name. When its BFD route is inactive, lookup fails and one explicit `/routing rule` falls back to `main`. Catch-all fasttrack rules are limited to unmarked connections.
-- **Direct routes** — generates BFD-monitored static routes in `main` for the supplied IPv4/CIDR destinations and does not generate mangle/connection marks.
+Во втором режиме нет выборочной очистки conntrack на MikroTik: нет метки, по которой можно отобрать соединения.
 
-Direct-route mode deliberately omits selective MikroTik conntrack cleanup because there is no connection mark to target.
+## Проверка доступности выхода
 
-
-## Health-check model
-
-This configurator intentionally generates **BFD-based liveness**, not recursive routes to external ping targets.
-
-Project topology assumption:
+Используется BFD для каждого Server2, а не рекурсивные маршруты к стороннему ping-адресу. Топология проекта:
 
 ```text
-MikroTik -> public Internet -> Server1
-Server1  -> public Internet -> Server2 public WG endpoint
+MikroTik -> публичный интернет -> Server1
+Server1  -> публичный интернет -> WireGuard endpoint каждого Server2
 ```
 
-The BFD session for each `wg-exit*` therefore rides over the actual Internet/WireGuard path used to reach that Server2. If that path is unavailable, BFD goes DOWN and BIRD withdraws that exit's default. With multiple Server2 nodes, every exit has its own independent BFD session.
+BFD-сессия `wg-exit*` проходит по тому же пути, по которому Server1 достигает Server2. При потере пути BFD становится DOWN и BIRD отзывает default только этого выхода. Дополнительный внешний probe изменил бы проверяемый путь и добавил зависимость от третьей стороны. При появлении частной underlay-сети или требования проверять NAT/произвольные внешние адреса потребуется отдельная сквозная проверка.
 
-**Maintainer/agent note:** do not add a second recursive-route/public-probe health mechanism as a supposed fix for "Server2 Internet liveness" under the current topology. It would introduce a separate third-party probe and a different failure domain. Add such an end-to-end probe only if the topology changes, for example if Server2 becomes reachable through a private underlay or explicit NAT/arbitrary-public-destination validation becomes a requirement.
+## Несколько Server2
 
-## Multiple Server2 exits
+Каждый дополнительный Server2 имеет числовой приоритет (меньше — предпочтительнее), свой WireGuard-интерфейс Server1, отдельную транзитную сеть, endpoint, ключи, необязательные PSK/MTU и WAN-интерфейс Server2.
 
-The configurator can add multiple exit Server2 nodes.
+Выходы сортируются по приоритету и сопоставляются последовательным Linux-таблицам, начиная с базовой. Policy rules Server1 проверяют эти таблицы по порядку и затем переходят к `main`. BIRD и BFD следят за выходами независимо. Монитор очищает VPN conntrack только при смене действительно выбранного выхода.
 
-Each exit has:
+Проверка входных данных отклоняет несовпадающие пары приватного и открытого WireGuard-ключей, одинаковые туннельные адреса двух peers, пересекающиеся транзитные и клиентские сети, повторяющиеся имена интерфейсов Server1 и диапазоны таблиц с системными номерами 253–255. Для генерации клиента `wg-in` первая запись AllowedIPs должна быть host `/32`, а AllowedIPs peer должны оставаться в клиентской подсети.
 
-- a numeric priority (lower is preferred);
-- its own Server1 WireGuard interface;
-- its own point-to-point transfer subnet;
-- its own endpoint, keys, optional PSK/MTU and Server2 WAN interface.
+Обе стороны каждого дополнительного туннеля можно импортировать локально, не передавая файлы из браузера.
 
-Exits are sorted by priority and mapped to consecutive Linux routing tables starting at the configured base table. Server1 policy rules try those tables in order, then naturally fall through to `main`.
+## Открываемые порты
 
-Validation rejects mismatched imported WireGuard private/public key pairs, identical peer tunnel addresses, overlapping transfer/client subnets, duplicate Server1 interface names, and table ranges containing Linux system tables 253–255. The first AllowedIPs entry must be a host `/32` to generate a wg-in client config; wg-in peer AllowedIPs must stay within the configured client subnet.
+Правила рассчитаны также на firewall с запретом по умолчанию: каждый входящий UDP-сервис получает явное разрешение `INPUT`.
 
-The generated BIRD configuration tracks every exit independently with BFD. The generated conntrack monitor flushes VPN client state only when the effective selected exit changes.
+- Для AWG на Server1 нужен `ListenPort`; при импорте AWG-конфига он читается автоматически.
+- Для полного конфигурационного файла `wg-in` разрешается его внешний порт.
+- На каждом Server2 разрешается порт `wg-exit` на выбранном WAN-интерфейсе.
+- BFD UDP/3784 разрешается только на нужном интерфейсе туннеля и между точными адресами peers.
 
-Both sides of every additional WireGuard tunnel can be imported locally in the browser. No imported data is transmitted.
+Исходящему `wg-exit` Server1 не нужно отдельное разрешение публичного входящего порта: транспорт инициирует соединение, а фиксированный `ListenPort` в генерируемом конфиге не задан.
 
+## Импорт и генерация
 
-## Explicit server listener ports
+Для входящего AWG/`wg-in` и межсерверного `wg-exit` источники выбираются независимо: можно импортировать существующие файлы либо создать новые локально. Режим межсерверной генерации создаёт независимые пары ключей X25519 для каждого выхода, отдельный 32-байтовый PSK при включённой опции и отдельные подсети `/30` для пустых полей адресов. Публичные endpoint-адреса Server2 вводятся вручную.
 
-Server firewall generation is deny-by-default-friendly: every UDP service that must accept unsolicited inbound traffic gets an explicit INPUT rule.
+Режим генерации также выдаёт `server1/<awg-interface>.conf` и `clients/<awg-interface>-client.conf`, необязательно `server1/wg-in.conf` и `clients/wg-in-client.conf`. Для AWG доступны версии 2.0, 3.0 compatibility и 3.1 (по умолчанию). AWG 3.x включает 32-байтовый `HeaderProtectionKey`, `S1-S4=12`, `H1-H4=1/2/3/4`, диапазоны времени/padding и необязательные CPS `I1-I5`. Для AWG 3.1 дополнительно используются `RandomTrailers=on`, `DisableCookies=on` и клиентский `PersistentKeepalive=25-35`. На сервере `I1-I5` отсутствуют, в клиентском конфиге могут присутствовать — так устроена текущая self-hosted схема.
 
-- Server1 AWG ListenPort is required and is imported from the incoming AWG config when present.
-- Optional Server1 wg-in ListenPort is permitted when a complete wg-in config is generated.
-- Every Server2 wg-exit ListenPort is permitted on that Server2 WAN interface.
-- BFD UDP/3784 is permitted only on the relevant tunnel interface and exact peer/local tunnel addresses.
+Публичный endpoint Server1 требуется только при генерации клиентских конфигураций.
 
-Server1 outbound wg-exit interfaces do not require a public listener rule because they initiate the WireGuard transport and do not define a fixed ListenPort in the generated config.
+### Генерация wg-exit между серверами
 
+При выборе **Generate Server1 ↔ Server2 wg-exit configs**:
 
-## Import or generate
+- основной туннель создаётся без импорта существующих конфигов;
+- можно создать сразу все дополнительные выходы или отдельно новый выход из его карточки;
+- ключевые пары X25519 у всех выходов независимы, PSK также уникален для каждого туннеля;
+- пустым транзитным адресам назначаются отдельные сети `/30`;
+- endpoint, UDP-порт, приоритет, WAN-интерфейс и MTU можно проверить и изменить перед генерацией.
 
-Configuration sources are independent:
-
-- **Incoming AWG / wg-in** can be imported or generated.
-- **Inter-server wg-exit** has its own selector: import existing Server1/Server2 configs or generate fresh tunnels.
-
-Inter-server generation creates new X25519 key pairs locally in the browser for the primary Server2 and every additional exit. If enabled, each tunnel receives its own 32-byte PresharedKey. Empty transfer addresses are populated with separate /30 networks; public Server2 endpoints remain explicit user input.
-
-Generation mode creates:
-- Server1/Server2 `wg-exit` key material for the primary and every additional Server2;
-- `server1/<awg-interface>.conf` plus `clients/<awg-interface>-client.conf`;
-- optional `server1/wg-in.conf` plus `clients/wg-in-client.conf`.
-
-AmneziaWG generation supports AWG 2.0, AWG 3.0, and AWG 3.1. AWG 3.1 is the default. AWG 3.x profiles generate a 32-byte `HeaderProtectionKey`, set `S1-S4=12` and `H1-H4=1/2/3/4`, emit current timing/padding ranges, and support optional CPS `I1-I5`. AWG 3.1 also emits `RandomTrailers=on`, `DisableCookies=on`, and client `PersistentKeepalive=25-35`. The server config intentionally omits I1-I5 while the generated client config may contain them, matching the current self-hosted layout.
-
-The Server1 public endpoint is required only for generated client configs.
-
-
-### Inter-server WG generation
-
-When **Generate Server1 ↔ Server2 wg-exit configs** is selected:
-
-- the primary `wg-exit` pair can be generated without importing either side;
-- all additional Server2 entries can be generated together;
-- a newly added Server2 can be generated independently from its card;
-- each exit gets independent Server1/Server2 X25519 key pairs;
-- optional PSK generation is per tunnel, not shared between exits;
-- empty transfer addresses are assigned separate `/30` networks;
-- endpoint, UDP port, priority, WAN interface and MTU remain reviewable/editable before final file generation.
-
-The final bundle still emits ordinary `server1/wg-exit*.conf` and `server2*/wg-exit.conf` files, so import and generation converge on the same validation and output path.
+И импорт, и генерация создают обычные `server1/wg-exit*.conf` и `server2*/wg-exit.conf`; к ним применяются одинаковые проверки.

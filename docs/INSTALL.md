@@ -1,23 +1,14 @@
-# Deployment guide
+# Установка и настройка
 
-This guide assumes:
+[English version](INSTALL.en.md)
 
-- Server1 already has a working AmneziaWG interface `<AWG_IF>`;
-- Server1 can reach every configured Server2 over the public Internet;
-- every Server2 can forward IPv4 traffic to the Internet;
-- RouterOS 7 is used on MikroTik;
-- all examples are sanitized and use placeholders.
+Руководство предполагает, что на Server1 уже работает AmneziaWG-интерфейс `<AWG_IF>`, Server1 видит каждый Server2 через публичный интернет, все Server2 могут пересылать IPv4 в интернет, а на MikroTik установлен RouterOS 7. Во всех примерах используются заполнители вместо рабочих адресов и ключей.
 
-## 1. Server2 — install packages
+## 1. Server2 — пакеты и пересылка IPv4
 
 ```bash
 apt update
 apt install -y wireguard bird2
-```
-
-Enable IPv4 forwarding:
-
-```bash
 cat >/etc/sysctl.d/90-vpn-router.conf <<'SYSCTL'
 net.ipv4.ip_forward=1
 SYSCTL
@@ -26,19 +17,16 @@ sysctl --system
 
 ## 2. Server2 — wg-exit
 
-Create `/etc/wireguard/wg-exit.conf` from `configs/server2/wg-exit.conf.example`.
+Создайте `/etc/wireguard/wg-exit.conf` по примеру `configs/server2/wg-exit.conf.example`.
 
-Important points:
+- Server2 слушает `<WG_EXIT_PORT>/udp`. Генерируемый конфиг явно разрешает этот порт в `INPUT` на `<SERVER2_WAN_IF>`.
+- `AllowedIPs` peer Server1 включает туннельный адрес Server1 и все клиентские VPN-сети за ним.
+- `PostUp`/`PostDown` сохраняют разрешение `FORWARD` для `wg-exit`, открывают внешний UDP-порт WireGuard и внутренний порт single-hop BFD UDP/3784 в `INPUT`.
+- Образец также разрешает установленный обратный трафик в `wg-exit`.
+- Правила `MASQUERADE` для конкретных клиентских подсетей добавляются и удаляются вместе с `wg-exit`.
+- Необязательные `MTU` и `PresharedKey` можно использовать; PSK на двух сторонах должен совпадать.
 
-- Server2 listens on `<WG_EXIT_PORT>/udp`, and the generated `wg-exit.conf` explicitly permits that UDP port in `INPUT` on `<SERVER2_WAN_IF>`.
-- `AllowedIPs` for the Server1 peer includes the Server1 tunnel address plus all VPN client networks routed through Server1.
-- `PostUp`/`PostDown` persist the required `FORWARD` permission for `wg-exit`;
-- `PostUp`/`PostDown` also permit the public WireGuard listen port and inner single-hop BFD UDP/3784 in `INPUT`.
-- The reference config also permits established return traffic to `wg-exit`.
-- Source-specific `MASQUERADE` rules for VPN client networks are installed and removed with `wg-exit`.
-- Optional `MTU` and `PresharedKey` values may be used; a PresharedKey must be identical on both peers.
-
-Enable and verify:
+Включите и проверьте:
 
 ```bash
 systemctl enable --now wg-quick@wg-exit
@@ -47,17 +35,15 @@ ip -br addr show wg-exit
 ip route
 ```
 
-## 3. Server2 — NAT and forwarding
+## 3. Server2 — NAT и forwarding
 
-The supplied `wg-exit.conf.example` is self-contained for the normal exit path: it adds forwarding rules plus source-specific `MASQUERADE` for `<AWG_NET>`. If `<WG_IN_NET>` is also used, add the matching optional NAT lines shown in the comments or use the browser configurator, which generates them automatically.
+Образец `wg-exit.conf.example` содержит правила пересылки и `MASQUERADE` для `<AWG_NET>`. При использовании `<WG_IN_NET>` добавьте необязательные правила NAT из комментариев образца или воспользуйтесь браузерным конфигуратором — он создаёт их сам.
 
-This approach avoids adding a second broad `POSTROUTING -o <SERVER2_WAN_IF> -j MASQUERADE` rule when the host already carries unrelated traffic.
+Такой подход не добавляет широкое правило `POSTROUTING -o <SERVER2_WAN_IF> -j MASQUERADE` для всего остального трафика хоста.
 
-## 4. Server2 — BIRD BFD responder
+## 4. Server2 — BIRD как ответчик BFD
 
-Create `/etc/bird/bird.conf` from `configs/server2/bird.conf.example`.
-
-Ensure the file is readable by BIRD:
+Создайте `/etc/bird/bird.conf` из `configs/server2/bird.conf.example` и настройте доступ BIRD к файлу:
 
 ```bash
 chown root:bird /etc/bird/bird.conf
@@ -70,23 +56,18 @@ birdc show protocols
 birdc show bfd sessions
 ```
 
-## 5. Server1 — install packages
+## 5. Server1 — пакеты и sysctl
 
 ```bash
 apt update
 apt install -y wireguard bird2 conntrack
-```
-
-Enable forwarding:
-
-```bash
 cat >/etc/sysctl.d/90-vpn-router.conf <<'SYSCTL'
 net.ipv4.ip_forward=1
 SYSCTL
 sysctl --system
 ```
 
-For policy-routing deployments, avoid strict reverse-path filtering:
+При policy routing не используйте строгую проверку обратного пути:
 
 ```bash
 cat >/etc/sysctl.d/91-vpn-rpf.conf <<'SYSCTL'
@@ -96,24 +77,22 @@ SYSCTL
 sysctl --system
 ```
 
-## 5.1 Server1 — generated AWG 3.x
+## 5.1. Server1 — сгенерированный AWG 3.x
 
-If the configurator is used in **Generate new AWG/WG configs** mode, it also creates:
+Режим конфигуратора **Generate new AWG/WG configs** создаёт:
 
 ```text
 server1/<AWG_IF>.conf
 clients/<AWG_IF>-client.conf
 ```
 
-AWG 3.1 is the default generation profile.
+По умолчанию используется AWG 3.1. Для файла нужны инструменты AmneziaWG с поддержкой полей AWG 3.x: стандартный WireGuard `wg-quick` не понимает `HeaderProtectionKey`, `ContentPaddingAddition`, `RandomTrailers` и другие поля AWG.
 
-The generated AWG file requires an AmneziaWG runtime/toolchain that understands AWG 3.x fields. Standard WireGuard `wg-quick` is not sufficient for `HeaderProtectionKey`, `ContentPaddingAddition`, `RandomTrailers`, and the other AWG-specific parameters.
+После установки совместимых инструментов и проверки файла поместите `server1/<AWG_IF>.conf` в `/etc/amnezia/amneziawg/<AWG_IF>.conf`, задайте режим 600 и включите `awg-quick@<AWG_IF>`. Команды включены в сгенерированный `INSTALL.txt`. Если существующий AWG-конфиг импортирован, сохраните его текущий порядок запуска.
 
-After installing compatible AmneziaWG tools and reviewing the generated file, place `server1/<AWG_IF>.conf` at `/etc/amnezia/amneziawg/<AWG_IF>.conf`, restrict it to mode 600, then enable `awg-quick@<AWG_IF>`. The generated `INSTALL.txt` includes these commands. Existing imported AWG deployments keep their current service lifecycle.
+Используйте актуальные `amneziawg-tools` вместе с совместимым актуальным `amneziawg-go` либо kernel module AWG 3.1. Старая версия модуля может создать интерфейс, но отклонить его настройку новым userspace-инструментом.
 
-Use current `amneziawg-tools` plus a compatible current `amneziawg-go` or AWG 3.1 kernel module. Do not mix a new userspace tool with an old kernel module: an old module may allow interface creation but reject the subsequent configuration.
-
-For the AWG 3.1 profile the configurator emits:
+Для AWG 3.1 генератор выдаёт:
 
 ```text
 S1=S2=S3=S4=12
@@ -129,15 +108,11 @@ RandomTrailers=on
 DisableCookies=on
 ```
 
-The generated client uses `PersistentKeepalive=25-35`.
+На клиенте генерируется `PersistentKeepalive=25-35`. Совместимость версий и правила проверки описаны в [AWG 3.x](AWG3.md).
 
-See [AWG3.md](AWG3.md) for the version/compatibility rationale and validation rules.
+## 6. Server1 — интерфейсы wg-exit
 
-## 6. Server1 — wg-exit interfaces
-
-For one Server2, create `/etc/wireguard/wg-exit.conf` from `configs/server1/wg-exit.conf.example`.
-
-For multiple Server2 nodes, create one independent WireGuard interface per exit, for example:
+Для одного Server2 создайте `/etc/wireguard/wg-exit.conf` из `configs/server1/wg-exit.conf.example`. Для нескольких Server2 нужен отдельный интерфейс и отдельная транзитная подсеть на каждый выход:
 
 ```text
 /etc/wireguard/wg-exit.conf
@@ -145,19 +120,15 @@ For multiple Server2 nodes, create one independent WireGuard interface per exit,
 /etc/wireguard/wg-exit3.conf
 ```
 
-Each interface must use its own transfer subnet. The configurator assigns every Server2 a numeric priority; lower values are preferred.
-
-See [MULTI_EXIT.md](MULTI_EXIT.md) for the complete model.
-
-Critical setting:
+Чем меньше числовой приоритет Server2, тем предпочтительнее выход. Полная схема: [несколько Server2](MULTI_EXIT.md). Критически важное значение в конфиге:
 
 ```ini
 Table = off
 ```
 
-If the imported/current WireGuard pair uses a `PresharedKey`, preserve it on both peers. If either side uses a custom `MTU`, preserve that value as well.
+Если в импортируемой паре WireGuard задан `PresharedKey` или нестандартный `MTU`, сохраните их на обеих соответствующих сторонах.
 
-Enable every generated exit interface:
+Включите все сгенерированные интерфейсы:
 
 ```bash
 systemctl enable --now wg-quick@wg-exit
@@ -165,22 +136,13 @@ systemctl enable --now wg-quick@wg-exit2
 # ...
 ```
 
-## 6.1 Generate inter-server WireGuard instead of importing
+## 6.1. Генерация межсерверного WireGuard
 
-The browser configurator has an independent **Inter-server WG source** selector.
+В конфигураторе отдельно выбирается источник **Inter-server WG source**. Вариант **Generate Server1 ↔ Server2 wg-exit configs** создаёт туннели локально без импорта готовых `wg-exit.conf`.
 
-Choose **Generate Server1 ↔ Server2 wg-exit configs** to create the inter-server WireGuard material locally without importing existing `wg-exit.conf` files.
+Для каждого выхода создаются пары приватного и открытого X25519-ключа Server1 и Server2, при необходимости отдельный PSK и отдельная сеть `/30`, если поля адресов пусты. Публичный endpoint Server2 нужно указать вручную. Приоритет, UDP-порт, WAN-интерфейс, MTU и имя интерфейса доступны для изменения.
 
-For each exit the configurator generates:
-
-- a Server1 X25519 private/public key pair;
-- a Server2 X25519 private/public key pair;
-- an optional unique PresharedKey for that tunnel;
-- a separate `/30` transfer subnet when the address fields are empty.
-
-The public endpoint of each Server2 is not guessed and must be entered explicitly. Priority, UDP port, WAN interface, MTU and interface name remain editable.
-
-The same operation supports the primary Server2 and every additional Server2. Generated outputs are installed exactly like imported ones:
+Генерируются как основной, так и дополнительные выходы; результат устанавливается так же, как импортированные файлы:
 
 ```text
 server1/wg-exit.conf
@@ -191,15 +153,15 @@ server2-2/wg-exit.conf
 ...
 ```
 
-## 7. Server1 — policy rules
+## 7. Server1 — policy routing
 
-Single-exit deployments keep the original rule:
+С одним выходом сохраняется правило:
 
 ```bash
 ip rule add priority 1000 iif <AWG_IF> lookup 200
 ```
 
-For multiple exits the configurator creates an ordered chain. With base table `200`:
+При нескольких выходах конфигуратор создаёт цепочку, например с начальной таблицей 200:
 
 ```bash
 ip rule add priority 1000 iif <AWG_IF> lookup 200
@@ -207,61 +169,44 @@ ip rule add priority 1001 iif <AWG_IF> lookup 201
 ip rule add priority 1002 iif <AWG_IF> lookup 202
 ```
 
-The Server2 with the lowest numeric priority is mapped to the first table. If that table has no BIRD default route, Linux continues to the next rule and therefore the next Server2.
+Server2 с минимальным числовым приоритетом получает первую таблицу. Если в ней нет default от BIRD, Linux пробует следующее правило и следующий Server2.
 
-Optional second incoming WireGuard:
+Для дополнительного входящего WireGuard при одном выходе:
 
 ```bash
 ip rule add priority 1001 iif <WG_IN_IF> lookup 200
 ```
 
-When a complete `wg-in.conf` is generated, this rule is persisted by that interface's own `PostUp`/`PreDown` hooks. If only a client subnet/interface name is supplied and no full `wg-in` configuration is generated, the policy-routing systemd unit can persist the additional rule instead.
+Полный сгенерированный `wg-in.conf` сохраняет это правило через собственные `PostUp`/`PreDown`. Если заданы только сеть и имя интерфейса, правило может сохранять systemd unit policy routing.
 
-## 8. Server1 — optional wg-in
+## 8. Server1 — дополнительный wg-in
 
-If an additional incoming WireGuard interface is used, the configurator can generate `server1/wg-in.conf`.
+Конфигуратор может создать `server1/wg-in.conf` с адресом и портом Server1, приватным ключом, открытым ключом peer, необязательным PSK и `AllowedIPs` peer. Он также включает `PostUp`/`PreDown` для тех же выходных таблиц, что у `awg0` (при одном выходе priority `1001`, при нескольких — отдельный диапазон), изоляцию клиентов на одном интерфейсе, разрешение пересылки и установленного обратного трафика.
 
-The generated file contains:
-
-- Server1 address and listen port;
-- private key and peer public key;
-- optional PresharedKey;
-- peer AllowedIPs;
-- `PostUp`/`PreDown` policy rules for the same ordered exit tables used by `awg0` (single-exit keeps priority `1001`; multi-exit uses a separate generated priority range);
-- same-interface client isolation;
-- forwarded client egress permission;
-- established/related return forwarding.
-
-Install it as `/etc/wireguard/<WG_IN_IF>.conf` and enable:
+Установите файл как `/etc/wireguard/<WG_IN_IF>.conf` и включите:
 
 ```bash
 systemctl enable --now wg-quick@<WG_IN_IF>
 ```
 
-## 9. Server1 — persistent fallback NAT
+## 9. Server1 — резервный NAT
 
-Install `configs/server1/vpn-failover-firewall.service.example` as:
+Установите `configs/server1/vpn-failover-firewall.service.example` как `/etc/systemd/system/vpn-failover-firewall.service`. Конфигуратору нужен реальный `ListenPort` AWG на Server1 для разрешения UDP в `INPUT` со стороны WAN: при импорте AWG-файла он считывается автоматически, при ручном вводе его нужно указать.
 
-```text
-/etc/systemd/system/vpn-failover-firewall.service
-```
-
-The browser configurator requires the Server1 AWG `ListenPort` so it can generate the explicit WAN-side `INPUT` rule. When an incoming AWG config is imported, `ListenPort` is read automatically. If the field is filled manually, enter the actual UDP listen port used by the Server1 AWG service.
-
-Replace placeholders and enable it:
+Замените placeholders и включите unit:
 
 ```bash
 systemctl daemon-reload
 systemctl enable --now vpn-failover-firewall.service
 ```
 
-The unit manages source-specific fallback `MASQUERADE` rules plus explicit Server1 `FORWARD` rules for the incoming VPN interfaces. It also installs explicit `INPUT` permissions for the public Server1 AWG listen port on `<SERVER1_WAN_IF>`, the optional `wg-in` listen port when generated, single-hop BFD UDP/3784 from MikroTik on `<AWG_IF>`, and BFD from every Server2 on the matching `wg-exit*` interface. Generated rules carry project-specific comments so the service removes only its own entries.
+Unit добавляет резервный `MASQUERADE` для клиентских сетей, правила `FORWARD` на Server1 и разрешения `INPUT` для внешних портов AWG и при наличии `wg-in`, BFD UDP/3784 от MikroTik на `<AWG_IF>` и от каждого Server2 на соответствующем `wg-exit*`. Комментарии позволяют unit удалять только собственные правила.
 
 ## 10. Server1 — BIRD
 
-Create `/etc/bird/bird.conf` from `configs/server1/bird.conf.example` for a single exit, or use the configurator / `configs/server1/bird-multi-exit.conf.example` for multiple exits.
+Для одного выхода используйте `configs/server1/bird.conf.example` как `/etc/bird/bird.conf`; для нескольких — конфигуратор или `configs/server1/bird-multi-exit.conf.example`.
 
-Each Server2 owns its own BIRD table, static BFD-controlled default, and Linux kernel table:
+У каждого Server2 собственная таблица BIRD, статический default под контролем BFD и таблица Linux:
 
 ```text
 highest priority -> exit4_1 -> table 200
@@ -269,13 +214,13 @@ next priority    -> exit4_2 -> table 201
 next priority    -> exit4_3 -> table 202
 ```
 
-The per-exit static route remains BIRD-2.14-compatible:
+Маршрут совместим с BIRD 2.14:
 
 ```bird
 route 0.0.0.0/0 via <WG_EXIT_S2_IP> bfd;
 ```
 
-Validate and inspect:
+Проверка:
 
 ```bash
 bird -p -c /etc/bird/bird.conf
@@ -286,13 +231,11 @@ birdc show route table exit4
 ip route show table 200
 ```
 
-With BFD UP, table `200` should contain a default via `wg-exit`.
+При BFD UP в таблице 200 ожидается default через `wg-exit`.
 
-## 11. Server1 — conntrack event monitor
+## 11. Server1 — монитор conntrack
 
-Install `configs/server1/vpn-exit-monitor.sh` as `/usr/local/sbin/vpn-exit-monitor.sh` and `configs/server1/vpn-exit-monitor.service` under `/etc/systemd/system/`.
-
-Then:
+Установите `configs/server1/vpn-exit-monitor.sh` в `/usr/local/sbin/vpn-exit-monitor.sh`, а `configs/server1/vpn-exit-monitor.service` — в `/etc/systemd/system/`:
 
 ```bash
 chmod 755 /usr/local/sbin/vpn-exit-monitor.sh
@@ -301,52 +244,46 @@ systemctl enable --now vpn-exit-monitor.service
 journalctl -t vpn-exit-monitor -f
 ```
 
-The service listens to Netlink route events using `ip monitor route` and flushes VPN conntrack only on add/delete events for the BIRD default route in table `200`.
+Сервис слушает события маршрутов Netlink через `ip monitor route`. Он определяет текущий выбранный выход по таблицам в порядке приоритетов и очищает conntrack VPN-подсетей только при смене выбранного пути. События резервного выхода, пока основной остаётся доступен, очистку не запускают.
 
-### RouterOS policy-routing fallback prerequisites
+### Условия fallback в RouterOS
 
-For address-list + mangle mode, the generated RouterOS configuration assumes the current default routing-decision order:
+Для режима address-list + mangle предполагается стандартный порядок:
 
 ```text
 mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main
 ```
 
-The dedicated routing table (for example `VPN`) is created with `fib` before it is referenced by `new-routing-mark`. The table contains only the BFD-controlled default route. When BFD makes that route inactive, the mangle lookup fails and policy processing continues to the explicit user fallback:
+Отдельная таблица (например, `VPN`) создаётся с `fib` до ссылки на неё через `new-routing-mark`; в ней должен быть только управляемый BFD default. Если он выключен, поиск продолжится по явному правилу:
 
 ```routeros
 /routing rule
 add action=lookup routing-mark=VPN table=main comment="VPN_BFD_FALLBACK"
 ```
 
-Do not change this fallback to `lookup-only-in-table`. Also remove any legacy backup default from the policy table itself, for example a `distance=2` route to the normal WAN gateway, because such a route makes the marked lookup succeed and prevents fallback to `main`.
+Не заменяйте `lookup` на `lookup-only-in-table`. Удалите прежний резервный default в самой таблице `VPN`, например маршрут к обычному WAN с `distance=2`: иначе поиск завершится в `VPN` и fallback к `main` не сработает. При изменённом `/routing/settings policy-rules` проверьте, что `mangle` предшествует `user/main` и `main` остаётся доступен.
 
-If the router has a customized `/routing/settings policy-rules`, check it before deployment. The generated design requires `mangle` to be evaluated before `user/main`, and `main` must remain available as the final forwarding table.
+## 12. MikroTik — BFD к Server1
 
-## 12. MikroTik — BFD to Server1
-
-Use the sanitized example in `configs/mikrotik/bfd-failover.rsc.example`.
-
-For a `/32` tunnel address:
+Используйте обезличенный пример `configs/mikrotik/bfd-failover.rsc.example`. Для туннельного адреса `/32`:
 
 ```routeros
 /ip address
 add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF>
 ```
 
-Before relying on BFD, the MikroTik firewall must allow the BFD control packets addressed to the router itself. The generated `.rsc` adds a narrow `chain=input protocol=udp dst-port=3784` rule constrained to `<AWG_SERVER_IP> -> <AWG_MIKROTIK_IP>` on `<MT_AWG_IF>`, and inserts it before the first existing INPUT drop rule when present.
+Firewall MikroTik должен пропускать BFD-пакеты к самому роутеру. Генерируемый `.rsc` добавляет узкое правило `chain=input protocol=udp dst-port=3784` для направления `<AWG_SERVER_IP> -> <AWG_MIKROTIK_IP>` на `<MT_AWG_IF>` перед первым существующим правилом `INPUT drop`, если оно есть.
 
-Then choose one of the two generated MikroTik modes:
+Выберите один из режимов:
 
-- **Address-list + mangle:** use a dedicated routing table and `check-gateway=bfd` on the monitored route. In RouterOS v7 `new-routing-mark` must reference an existing routing table, so the mark is the table name (for example `VPN`). If the BFD route becomes inactive, the mangle lookup fails and processing continues; the generated `/routing rule action=lookup routing-mark=<table> table=main` makes fallback to the normal WAN default explicit. This mode supports selective `CM_VPN`-style conntrack cleanup. Import also sets `connection-mark=no-mark` on catch-all fasttrack rules so later packets still honor the policy. If migrating from the older layout where the policy table itself also contains a backup default (for example `distance=2` via the normal WAN gateway), remove or disable that backup route after adding the fallback rule; otherwise the policy-table lookup succeeds on that route and never reaches the `main` fallback rule.
-- **Direct routes:** add the required destination prefixes directly to `main`, each through the AWG gateway with `check-gateway=bfd`. No mangle or connection marks are generated.
+- **Address-list + mangle:** отдельная таблица, маршрут с `check-gateway=bfd`, метка маршрутизации с именем таблицы (например, `VPN`) и `/routing rule action=lookup routing-mark=<table> table=main` для fallback. Доступна выборочная очистка `CM_VPN` conntrack. Общие fasttrack-правила ограничиваются `connection-mark=no-mark`. При переходе со старой схемы удалите резервный default с `distance=2` из отдельной таблицы после добавления правила fallback.
+- **Прямые маршруты:** нужные префиксы создаются в `main` через шлюз AWG с `check-gateway=bfd`, без mangle и меток соединений.
 
-In direct-route mode, existing connections are not selectively flushed by the generated MikroTik script because no connection mark exists.
+Во втором режиме генератор не очищает выборочно старые соединения MikroTik: метки для их отбора нет.
 
-## 13. Functional test
+## 13. Функциональная проверка
 
-For a single exit, the original test remains valid.
-
-For multiple exits, inspect:
+Для одного выхода действует обычная проверка. Для нескольких посмотрите состояние всех таблиц:
 
 ```bash
 birdc show bfd sessions
@@ -357,14 +294,6 @@ ip route show table 202
 journalctl -t vpn-exit-monitor -f
 ```
 
-Then stop `wg-exit` on the currently preferred Server2. Expected behavior:
+Остановите `wg-exit` на самом приоритетном Server2. Ожидается: BFD этого выхода перейдёт в DOWN, default пропадёт только в его таблице, policy routing выберет следующий Server2 и из-за смены действующего выхода очистится VPN conntrack. При возвращении более приоритетного Server2 должен произойти автоматический failback.
 
-1. that exit's BFD session goes DOWN;
-2. only its Linux table loses the BIRD default;
-3. policy routing selects the next available Server2 table;
-4. VPN conntrack is flushed because the effective path changed;
-5. when the more preferred Server2 returns, automatic failback occurs.
-
-Repeat until every Server2 is unavailable; the final fallback must be Server1's `main` table and WAN.
-
-Detailed test procedure: [MULTI_EXIT.md](MULTI_EXIT.md).
+Повторяйте до недоступности всех Server2: последним резервным путём должны стать таблица `main` и WAN Server1. Подробная процедура: [проверка нескольких выходов](MULTI_EXIT.md).

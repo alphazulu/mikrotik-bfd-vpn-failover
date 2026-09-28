@@ -1,67 +1,49 @@
-# Security and publication checklist
+# Безопасность и публикация
 
-Before publishing this repository, verify that it does not contain production secrets or identifying infrastructure data.
+[English version](SECURITY.en.md)
 
-## Never publish
+Перед публикацией убедитесь, что в репозитории нет рабочих секретов и данных, по которым можно идентифицировать инфраструктуру.
 
-- WireGuard private keys
-- AmneziaWG private keys
-- API tokens
-- cloud provider credentials
-- passwords
-- backup archives
-- exact production public IP addresses if disclosure is not intended
-- personally identifying hostnames or comments
+## Что нельзя публиковать
 
-## Public keys
+- Приватные ключи WireGuard и AmneziaWG;
+- API-токены, пароли и учётные данные облачных провайдеров;
+- архивы резервных копий;
+- реальные публичные IP-адреса, если их раскрытие не планируется;
+- идентифицирующие хосты и комментарии.
 
-WireGuard public keys are not secret cryptographic material, but they can still identify a deployment. For a generic public guide, placeholders are preferable.
+Публичные ключи WireGuard не являются криптографическим секретом, но могут идентифицировать установку. В общедоступной инструкции предпочтительны placeholders.
 
-## Recommended `.gitignore`
+## Проверка перед публикацией
 
-This repository includes a `.gitignore` which excludes common secret/key patterns. It is not a substitute for reviewing every commit.
-
-## Pre-publish scan
-
-Before pushing:
+`.gitignore` исключает распространённые файлы с ключами и секретами, но не заменяет проверку каждого коммита. Перед отправкой изменений найдите упоминания секретов:
 
 ```bash
 grep -RniE '(PrivateKey|password|token|secret)' .
 ```
 
-Review every match manually.
-
-If you know the production public addresses, scan for them explicitly before publishing:
+Каждое совпадение проверьте вручную. Если известны рабочие публичные адреса, найдите и их:
 
 ```bash
 grep -Rni '<PRODUCTION_IP_1>' .
 grep -Rni '<PRODUCTION_IP_2>' .
 ```
 
-## Git history matters
+Удаление секрета из текущих файлов не удаляет его из истории Git. Если секрет когда-либо был закоммичен, замените его и удалите из истории до открытия репозитория.
 
-Deleting a secret from the current version does not remove it from previous Git commits. If a secret was ever committed, rotate the secret and rewrite history before making the repository public.
+## Браузерный конфигуратор
 
+Статический конфигуратор в `configurator/` обрабатывает импортированные рабочие конфигурации в браузере:
 
-## Browser configurator
+- нет backend и аналитики, внешних JavaScript, CSS, шрифтов и CDN;
+- CSP содержит `connect-src 'none'`;
+- не используются cookies, localStorage, sessionStorage, IndexedDB и Service Worker;
+- импорт файлов идёт через браузерный File API;
+- загрузки создаются локально через `Blob` и object URL;
+- приватные ключи, PresharedKey и AWG `HeaderProtectionKey` скрыты в предпросмотре, пока пользователь явно не откроет их.
 
-The static configurator under `configurator/` is designed so imported production configuration never needs to leave the user's browser.
+Скачанный архив может содержать реальные приватные ключи и требует соответствующего обращения.
 
-Security properties:
+## Локальная генерация ключей
 
-- no backend and no analytics;
-- no external runtime JavaScript, CSS, fonts or CDN dependencies;
-- Content Security Policy uses `connect-src 'none'`;
-- no cookies, localStorage, sessionStorage, IndexedDB or Service Worker;
-- imported files are read with the browser File API only;
-- generated downloads are created with `Blob` / object URLs locally;
-- private keys, PresharedKey values, and AWG `HeaderProtectionKey` are masked in preview unless the user explicitly reveals them.
-
-The downloaded generated bundle can contain real private keys and must be treated as sensitive material.
-
-
-## Local key generation
-
-Generate mode uses the browser cryptographic random-number generator (`crypto.getRandomValues()`) and performs X25519 public-key derivation locally. Generated private keys and PSKs exist only in the current tab until downloaded; the application still has `connect-src 'none'` and does not send them over the network.
-
-Downloaded generated bundles contain private keys, PSKs, and AWG HeaderProtectionKey values and must be treated as secrets.
+В режиме генерации используется `crypto.getRandomValues()`, а открытый ключ X25519 вычисляется в браузере. Приватные ключи и PSK остаются в текущей вкладке до скачивания; приложение не отправляет их по сети. Загруженный архив содержит приватные ключи, PSK и AWG HeaderProtectionKey и должен храниться как секрет.

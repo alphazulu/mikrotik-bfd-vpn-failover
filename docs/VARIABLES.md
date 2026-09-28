@@ -1,63 +1,64 @@
-# Placeholder reference
+# Справочник placeholders
 
-Use placeholders in documentation and public repositories. Suggested mapping:
+[English version](VARIABLES.en.md)
 
-| Placeholder | Meaning |
+В документации и публичном репозитории вместо рабочих данных используйте заполнители. Значения переменных:
+
+| Placeholder | Значение |
 |---|---|
-| `<SERVER1_PUBLIC_IP>` | Public IPv4 of Server1 |
-| `<SERVER2_PUBLIC_IP>` | Public IPv4 of a Server2 exit |
-| `<SERVER2_N_PUBLIC_IP>` | Public IPv4 of additional Server2 number N |
-| `<SERVER2_PRIORITY>` | Numeric exit priority; lower means more preferred |
-| `<SERVER1_WAN_IF>` | Server1 Internet-facing interface, e.g. `eth0` |
-| `<LINUX_POLICY_TABLE>` | Linux policy-routing table used for VPN client traffic in a single-exit setup |
-| `<LINUX_POLICY_TABLE_BASE>` | First Linux policy-routing table for prioritized exits, normally `200` |
-| `<SERVER2_WAN_IF>` | Server2 Internet-facing interface, e.g. `eth0` |
-| `<AWG_LISTEN_PORT>` | Public UDP listen port of the incoming AmneziaWG interface on Server1 |
-| `<AWG_IF>` | AmneziaWG interface on Server1, normally `awg0` |
-| `<AWG_NET>` | Client network behind `awg0` |
-| `<AWG_SERVER_IP>` | Server1 address inside AmneziaWG |
-| `<AWG_MIKROTIK_IP>` | MikroTik address inside AmneziaWG |
-| `<AWG_PROFILE>` | Generated AWG profile: `2.0`, `3.0 compatibility`, or `3.1` |
-| `<AWG_HEADER_PROTECTION_KEY>` | AWG 3.x 32-byte HeaderProtectionKey; secret and identical on both endpoints |
-| `<AWG_CONTENT_PADDING_ADDITION>` | AWG 3.x content padding range, e.g. `10-100` |
-| `<AWG_REKEY_AFTER_TIME>` | AWG 3.x rekey interval/range |
-| `<AWG_REKEY_TIMEOUT>` | AWG 3.x rekey timeout/range |
-| `<AWG_REJECT_AFTER_TIME>` | AWG 3.x reject-after interval/range |
-| `<AWG_KEEPALIVE_TIMEOUT>` | AWG 3.x keepalive timeout/range |
-| `<AWG_MAX_HANDSHAKE_ATTEMPTS>` | AWG 3.x max handshake attempts/range |
-| `<AWG_RANDOM_TRAILERS>` | AWG 3.1 toggle, normally `on` in generated 3.1 profile |
-| `<AWG_DISABLE_COOKIES>` | AWG 3.1 toggle, normally `on` in generated 3.1 profile |
-| `<MT_AWG_IF>` | MikroTik AmneziaWG/WireGuard-compatible interface name |
-| `<MT_ROUTE_TABLE>` | Dedicated RouterOS routing table for policy mode, not `main` |
-| `<DST_ADDRESS_LIST>` | Existing RouterOS `dst-address-list` selected for the VPN path |
-| `<WAN_INTERFACE_LIST>` | RouterOS interface list of WAN ports, excluded from policy marking |
-| `<WG_EXIT_IF>` | Server1 WireGuard interface for one exit, e.g. `wg-exit`, `wg-exit2` |
-| `<WG_EXIT_NET>` | Inter-server WireGuard transfer subnet; unique per Server2 |
-| `<WG_EXIT_S1_IP>` | Server1 address on `wg-exit` |
-| `<WG_EXIT_S2_IP>` | Server2 address on `wg-exit` |
-| `<WG_EXIT_PORT>` | UDP listen port on Server2 |
-| `<WG_EXIT_MTU>` | Optional MTU for `wg-exit` when a non-default value is required |
-| `<WG_EXIT_PRESHARED_KEY>` | Optional WireGuard PresharedKey; sensitive and identical on both peers |
-| `<WG_IN_NET>` | Optional second incoming WireGuard client network on Server1 |
-| `<WG_IN_LISTEN_PORT>` | Optional public UDP listen port of the additional incoming WireGuard interface on Server1 |
-| `<WG_IN_IF>` | Optional incoming WireGuard interface on Server1 |
-| `<WG_IN_SERVER_ADDRESS>` | Optional Server1 address/prefix on `wg-in` |
-| `<WG_IN_PORT>` | Optional UDP listen port for `wg-in` |
-| `<WG_IN_PRIVATE_KEY>` | Optional Server1 `wg-in` private key — never commit a real value |
-| `<WG_IN_PEER_PUBLIC_KEY>` | Optional `wg-in` peer public key |
-| `<WG_IN_PEER_ALLOWED_IPS>` | Optional `AllowedIPs` for the `wg-in` peer |
-| `<WG_IN_PRESHARED_KEY>` | Optional `wg-in` PresharedKey |
-| `<SERVER1_WG_EXIT_PRIVATE_KEY>` | Server1 private key — never commit a real value |
-| `<SERVER1_WG_EXIT_PUBLIC_KEY>` | Server1 public key |
-| `<SERVER2_WG_EXIT_PRIVATE_KEY>` | Server2 private key — never commit a real value |
-| `<SERVER2_WG_EXIT_PUBLIC_KEY>` | Server2 public key |
+| `<SERVER1_PUBLIC_IP>` | Публичный IPv4 Server1 |
+| `<SERVER2_PUBLIC_IP>` | Публичный IPv4 выходного Server2 |
+| `<SERVER2_N_PUBLIC_IP>` | Публичный IPv4 дополнительного Server2 с номером N |
+| `<SERVER2_PRIORITY>` | Числовой приоритет выхода: меньшее число предпочтительнее |
+| `<SERVER1_WAN_IF>` | Интернет-интерфейс Server1, например `eth0` |
+| `<LINUX_POLICY_TABLE>` | Linux-таблица для VPN-клиентов в схеме с одним выходом |
+| `<LINUX_POLICY_TABLE_BASE>` | Первая Linux-таблица для выходов по приоритету, обычно `200` |
+| `<SERVER2_WAN_IF>` | Интернет-интерфейс Server2, например `eth0` |
+| `<AWG_LISTEN_PORT>` | Внешний UDP-порт входящего AmneziaWG на Server1 |
+| `<AWG_IF>` | Интерфейс AmneziaWG на Server1, обычно `awg0` |
+| `<AWG_NET>` | Клиентская сеть за `awg0` |
+| `<AWG_SERVER_IP>` | Адрес Server1 внутри AmneziaWG |
+| `<AWG_MIKROTIK_IP>` | Адрес MikroTik внутри AmneziaWG |
+| `<AWG_PROFILE>` | Генерируемый профиль AWG: `2.0`, совместимость `3.0` или `3.1` |
+| `<AWG_HEADER_PROTECTION_KEY>` | Секретный 32-байтовый ключ AWG 3.x HeaderProtectionKey, одинаковый на обеих сторонах |
+| `<AWG_CONTENT_PADDING_ADDITION>` | Диапазон AWG 3.x для добавочного padding, например `10-100` |
+| `<AWG_REKEY_AFTER_TIME>` | Интервал или диапазон AWG 3.x для rekey |
+| `<AWG_REKEY_TIMEOUT>` | Тайм-аут или диапазон AWG 3.x для rekey |
+| `<AWG_REJECT_AFTER_TIME>` | Интервал или диапазон AWG 3.x для reject-after |
+| `<AWG_KEEPALIVE_TIMEOUT>` | Тайм-аут или диапазон AWG 3.x для keepalive |
+| `<AWG_MAX_HANDSHAKE_ATTEMPTS>` | Максимальное количество или диапазон попыток handshake AWG 3.x |
+| `<AWG_RANDOM_TRAILERS>` | Переключатель AWG 3.1, обычно `on` |
+| `<AWG_DISABLE_COOKIES>` | Переключатель AWG 3.1, обычно `on` |
+| `<MT_AWG_IF>` | Совместимый с AmneziaWG/WireGuard интерфейс MikroTik |
+| `<MT_ROUTE_TABLE>` | Отдельная таблица RouterOS для policy mode, отличная от `main` |
+| `<DST_ADDRESS_LIST>` | Существующий `dst-address-list` RouterOS, выбирающий VPN-путь |
+| `<WAN_INTERFACE_LIST>` | Список WAN-интерфейсов RouterOS, исключённых из маркировки |
+| `<WG_EXIT_IF>` | Выходной WireGuard-интерфейс Server1, например `wg-exit`, `wg-exit2` |
+| `<WG_EXIT_NET>` | Уникальная для Server2 транзитная сеть WireGuard |
+| `<WG_EXIT_S1_IP>` | Адрес Server1 в `wg-exit` |
+| `<WG_EXIT_S2_IP>` | Адрес Server2 в `wg-exit` |
+| `<WG_EXIT_PORT>` | Слушающий UDP-порт Server2 |
+| `<WG_EXIT_MTU>` | Необязательный MTU для `wg-exit`, если нужен нестандартный |
+| `<WG_EXIT_PRESHARED_KEY>` | Необязательный секретный PresharedKey WireGuard, одинаковый у двух peers |
+| `<WG_IN_NET>` | Необязательная сеть клиентов второго входящего WireGuard на Server1 |
+| `<WG_IN_LISTEN_PORT>` | Необязательный внешний UDP-порт дополнительного входящего WireGuard на Server1 |
+| `<WG_IN_IF>` | Необязательный входящий WireGuard-интерфейс Server1 |
+| `<WG_IN_SERVER_ADDRESS>` | Необязательный адрес с префиксом Server1 на `wg-in` |
+| `<WG_IN_PORT>` | Необязательный слушающий UDP-порт `wg-in` |
+| `<WG_IN_PRIVATE_KEY>` | Необязательный приватный ключ Server1 для `wg-in`: реальное значение нельзя коммитить |
+| `<WG_IN_PEER_PUBLIC_KEY>` | Открытый ключ peer для `wg-in` |
+| `<WG_IN_PEER_ALLOWED_IPS>` | Необязательный `AllowedIPs` peer для `wg-in` |
+| `<WG_IN_PRESHARED_KEY>` | Необязательный PresharedKey для `wg-in` |
+| `<SERVER1_WG_EXIT_PRIVATE_KEY>` | Приватный ключ Server1: реальное значение нельзя коммитить |
+| `<SERVER1_WG_EXIT_PUBLIC_KEY>` | Открытый ключ Server1 |
+| `<SERVER2_WG_EXIT_PRIVATE_KEY>` | Приватный ключ Server2: реальное значение нельзя коммитить |
+| `<SERVER2_WG_EXIT_PUBLIC_KEY>` | Открытый ключ Server2 |
 
-Example-only private address plan used in explanations can be chosen freely, but using placeholders is safer for a public repository.
+В примерах можно использовать произвольные частные адреса, но для публичного репозитория безопаснее placeholders.
 
+## Несколько выходов
 
-## Multi-exit convention
-
-For multiple Server2 nodes, suffix placeholders conceptually per exit:
+Для нескольких Server2 обозначайте значения с номером выхода:
 
 ```text
 <WG_EXIT_IF_1>, <WG_EXIT_NET_1>, <WG_EXIT_S1_IP_1>, <WG_EXIT_S2_IP_1>
@@ -65,4 +66,4 @@ For multiple Server2 nodes, suffix placeholders conceptually per exit:
 ...
 ```
 
-The configurator maps exits sorted by `<SERVER2_PRIORITY>` to Linux tables starting at `<LINUX_POLICY_TABLE_BASE>`.
+Конфигуратор сортирует выходы по `<SERVER2_PRIORITY>` и назначает им таблицы Linux начиная с `<LINUX_POLICY_TABLE_BASE>`.

@@ -1,6 +1,8 @@
-# Operations, testing and troubleshooting
+# Эксплуатация, проверка и диагностика
 
-## Daily health checks
+[English version](OPERATIONS.en.md)
+
+## Регулярные проверки
 
 ### Server1
 
@@ -9,7 +11,7 @@ wg show
 birdc show bfd sessions
 ip rule
 ip route show table 200
-# for additional exits:
+# при дополнительных выходах:
 ip route show table 201
 ip route show table 202
 systemctl is-active wg-quick@wg-exit bird vpn-exit-monitor
@@ -32,129 +34,94 @@ iptables -t nat -S POSTROUTING
 /ip route print detail where check-gateway=bfd
 ```
 
-## Expected route events on Server1
+## События маршрута на Server1
 
-When Server2 disappears:
+При потере Server2 ожидается удаление маршрута:
 
 ```text
 Deleted default via <WG_EXIT_S2_IP> dev wg-exit table 200 proto bird metric 32
 ```
 
-When Server2 returns:
+При восстановлении:
 
 ```text
 default via <WG_EXIT_S2_IP> dev wg-exit table 200 proto bird metric 32
 ```
 
-Observe manually:
+Наблюдение:
 
 ```bash
 ip -ts monitor route
 journalctl -t vpn-exit-monitor -f
 ```
 
-## Health-check design note
+## Что проверяет BFD
 
-Do not replace the generated per-exit BFD checks with recursive routes to an arbitrary public probe host unless the network topology changes.
-
-Current project assumption:
+Не заменяйте BFD для каждого выхода рекурсивным маршрутом к произвольному публичному адресу, пока топология остаётся следующей:
 
 ```text
-MikroTik -> Internet -> Server1
-Server1  -> Internet -> each Server2 public WireGuard endpoint
+MikroTik -> интернет -> Server1
+Server1  -> интернет -> публичный WireGuard endpoint каждого Server2
 ```
 
-Because the real tunnel endpoints themselves are reached through the Internet, BFD tests the actual path that must be alive for the VPN exit to work. Recursive probes would add another failure domain rather than improve the signal for this deployment.
+В такой схеме BFD проходит через тот же путь, который нужен туннелю до Server2. Сторонний публичный probe добавит ещё одну область отказа. Если появится частный транспорт до Server2 или потребуется отдельно проверять NAT и доступность произвольных внешних адресов, добавьте сквозную проверку и явно опишите её критерий.
 
-If a future design introduces a private underlay to Server2, or requires explicit validation of NAT/public-destination reachability beyond the tunnel endpoint, add a separate end-to-end health check and document the new failure criterion.
-
-## BFD diagnostics
+## Диагностика BFD и WireGuard
 
 ```bash
 birdc show bfd sessions
 tcpdump -ni wg-exit -vvv udp port 3784
 tcpdump -ni <AWG_IF> -vvv udp port 3784
-```
-
-Single-hop BFD packets should normally use TTL 255.
-
-## WireGuard diagnostics
-
-```bash
 wg show wg-exit
 ```
 
-Check latest handshake, transfer counters, endpoint and AllowedIPs. A WireGuard interface can remain administratively UP even when its peer is unreachable; BFD provides liveness.
+Для single-hop BFD обычно ожидается TTL 255. В `wg show` проверьте время последнего handshake, счётчики, endpoint и AllowedIPs. Интерфейс WireGuard может оставаться административно UP при недоступном peer: его доступность определяет BFD.
 
-## Firewall persistence
+## Сохранение правил firewall
 
-If Server2 has `FORWARD` policy DROP, keep:
+При политике `FORWARD DROP` на Server2 оставьте в `wg-exit.conf`:
 
 ```ini
 PostUp = iptables -I FORWARD 1 -i %i -j ACCEPT
 PostDown = iptables -D FORWARD -i %i -j ACCEPT
 ```
 
-in `wg-exit.conf`.
+## Проверки после перезагрузки
 
-## Reboot test matrix
+По очереди перезагрузите: 1) только Server1; 2) только Server2; 3) оба в одном окне обслуживания; 4) Server1 при недоступном Server2; 5) позднее Server2 и проверьте автоматическое возвращение на него.
 
-Test:
-
-1. Server1 only;
-2. Server2 only;
-3. both in the same maintenance window;
-4. Server1 while Server2 remains offline;
-5. Server2 later, confirming automatic failback.
-
-After each test:
+После каждого сценария:
 
 ```bash
 birdc show bfd sessions
 ip route show table 200
 ```
 
-## Conntrack cleanup
+## Conntrack, MTU и таймеры
 
-Server1 removes only connections sourced from configured VPN client subnets.
+Server1 очищает только соединения с адресами источника из заданных клиентских VPN-подсетей. MikroTik удаляет только соединения с меткой `CM_VPN`.
 
-MikroTik removes only connections marked `CM_VPN`.
-
-## MTU / PMTU
-
-If ICMP works but HTTPS/TCP sessions stall, investigate PMTU/MSS:
+Если ICMP работает, но HTTPS/TCP зависает, проверьте PMTU/MSS:
 
 ```bash
 ping -M do -s <SIZE> <REMOTE_IP>
 tracepath <REMOTE_IP>
 ```
 
-## BFD timers
+Начальный интервал BFD — 500 мс на отправку и приём, multiplier 3. Уменьшайте интервалы только при подтверждённой необходимости.
 
-Recommended starting point:
+## Тест нескольких выходов
 
-```text
-500 ms transmit/receive
-multiplier 3
-```
-
-Do not make timers more aggressive unless measurements justify it.
-
-
-## Multi-exit failover test
-
-For multiple Server2 exits, verify the complete priority chain rather than only primary-to-main fallback.
-
-Example with three exits:
+Проверяйте всю цепочку приоритетов, включая переход к WAN Server1:
 
 ```text
 table 200 -> priority 1
 table 201 -> priority 2
 table 202 -> priority 3
-main      -> Server1 WAN
+main      -> WAN Server1
 ```
 
-Check the current state:
+Текущее состояние:
 
 ```bash
 birdc show bfd sessions
@@ -165,21 +132,16 @@ ip route show table 202
 journalctl -t vpn-exit-monitor -f
 ```
 
-Then stop `wg-exit` on the most preferred Server2. New sessions should move to the next table. Continue until all Server2 exits are down and confirm fallback through Server1 WAN.
+Остановите `wg-exit` на самом приоритетном Server2. Новые соединения должны перейти к следующей таблице. Повторяйте, пока не останется доступных Server2, затем проверьте выход через WAN Server1.
 
-Restore the Server2 nodes in a non-priority order as well. The selected path must always converge to the lowest numeric priority currently available.
+Восстановите Server2 также в порядке, не совпадающем с приоритетами. Выбранным должен стать доступный выход с наименьшим числовым приоритетом. Падение и восстановление резервного Server2 при работающем основном не должно вызывать запись `Selected VPN exit changed` и очистку VPN conntrack.
 
-A backup Server2 going DOWN/UP while a higher-priority exit remains active should not produce a `Selected VPN exit changed` log entry and should not flush VPN conntrack.
+## Примечание для scheduler RouterOS 7.24.x
 
-
-## RouterOS 7.24.x scheduler note
-
-The generated `VPN-BFD-Conntrack` watcher intentionally does not use a bare `:return`.
-
-On RouterOS 7.24.x, `:return` requires a value. A bare `:return` in a scheduler-run script can log:
+Скрипт `VPN-BFD-Conntrack` не использует пустой `:return`: в RouterOS 7.24.x ему требуется значение, иначе scheduler сообщает:
 
 ```text
 Script Error: missing value(s) of argument(s) value
 ```
 
-The watcher therefore uses nested `:if ... else={...}` blocks for early-exit logic instead of `:return`. Initial state is recorded without flushing conntrack, and later runs flush only when the monitored route state actually changes.
+Для раннего выхода применяются вложенные `:if ... else={...}`. Начальное состояние запоминается без очистки, затем conntrack очищается только при изменении состояния отслеживаемого маршрута.
