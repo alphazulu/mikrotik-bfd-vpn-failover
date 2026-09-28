@@ -235,6 +235,16 @@ assert.match(files["mikrotik/bfd-failover.rsc"], /new-routing-mark="VPN"/);
 assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /VPN_RM/, "No synthetic routing mark/table should be generated");
 assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /VPN_BFD_LOOKUP/, "Mangle already performs the VPN-table lookup");
 assert.match(files["mikrotik/bfd-failover.rsc"], /action=lookup routing-mark="VPN" table=main comment="VPN_BFD_FALLBACK"/);
+assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /lookup-only-in-table/, "VPN fallback must never use lookup-only-in-table");
+assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /routing-table="VPN"[^\n]*distance=2|distance=2[^\n]*routing-table="VPN"/, "Generator must not create an in-table backup default that prevents main fallback");
+{
+  const rsc = files["mikrotik/bfd-failover.rsc"];
+  const tablePos = rsc.indexOf('/routing table add fib name="VPN"');
+  const markPos = rsc.indexOf('new-routing-mark="VPN"');
+  assert.ok(tablePos >= 0 && tablePos < markPos, "Custom FIB table must be created before it is referenced by new-routing-mark");
+  const vpnDefaultCount = [...rsc.matchAll(/dst-address=0\.0\.0\.0\/0[^\n]*routing-table="VPN"/g)].length;
+  assert.equal(vpnDefaultCount, 1, "Policy table must contain only the BFD-controlled default route");
+}
 assert.match(files["mikrotik/bfd-failover.rsc"], /check-gateway=bfd comment="VPN_BFD_PRIMARY" disabled=no distance=1 dst-address=0\.0\.0\.0\/0 gateway="10\.88\.99\.1%wg-awg-proxy-1" routing-table="VPN" scope=30 target-scope=10/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /action=fasttrack-connection/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /connection-mark=no-mark/);
