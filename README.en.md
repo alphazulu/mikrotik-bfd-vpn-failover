@@ -272,6 +272,23 @@ This design uses single-hop BFD, therefore only UDP destination port `3784` is a
 
 The generator creates narrow source/destination/interface rules rather than opening UDP/3784 globally.
 
+### RouterOS: why routing-mark does not blackhole
+
+In policy mode the generator creates a dedicated FIB table, for example `VPN`, and mangle sets `new-routing-mark=VPN`. That table contains only the BFD-controlled default through Server1.
+
+When BFD goes DOWN, that default becomes inactive. According to the current RouterOS routing-decision documentation, a failed mangle-table lookup is not a terminal blackhole: with the default `mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main` order, processing continues. The generator also creates an explicit fallback:
+
+```routeros
+/routing rule
+add action=lookup routing-mark=VPN table=main comment="VPN_BFD_FALLBACK"
+```
+
+The use of `action=lookup` is intentional. `lookup` permits further fall-through, while `lookup-only-in-table` is the no-fallback form and can make the destination unreachable when the selected table has no active route.
+
+The `VPN` table must not retain a legacy `distance=2` WAN default. If such a route is present, lookup succeeds inside `VPN` and RouterOS never reaches the `main` fallback.
+
+If `/routing/settings policy-rules` was customized manually, verify before import that `mangle` runs before `user/main` and that `main` remains in the routing-decision chain.
+
 ## Why BFD instead of ping/Netwatch or recursive routes
 
 **Important design assumption of this project:** Server1 and every Server2 are reached through the public Internet. Each inter-server `wg-exit` also terminates on the public Internet endpoint of its Server2; there is no separate private underlay carrying that tunnel.
