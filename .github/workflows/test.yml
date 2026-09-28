@@ -35,6 +35,9 @@ jobs:
       - name: Unit and privacy tests
         run: node tests/configurator.mjs
 
+      - name: Simulate generated monitor failover and failback
+        run: node tests/monitor.mjs
+
       - name: Install config validators
         run: |
           sudo apt-get update

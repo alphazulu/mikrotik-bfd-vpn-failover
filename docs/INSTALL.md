@@ -109,6 +109,8 @@ AWG 3.1 is the default generation profile.
 
 The generated AWG file requires an AmneziaWG runtime/toolchain that understands AWG 3.x fields. Standard WireGuard `wg-quick` is not sufficient for `HeaderProtectionKey`, `ContentPaddingAddition`, `RandomTrailers`, and the other AWG-specific parameters.
 
+After installing compatible AmneziaWG tools and reviewing the generated file, place `server1/<AWG_IF>.conf` at `/etc/amnezia/amneziawg/<AWG_IF>.conf`, restrict it to mode 600, then enable `awg-quick@<AWG_IF>`. The generated `INSTALL.txt` includes these commands. Existing imported AWG deployments keep their current service lifecycle.
+
 Use current `amneziawg-tools` plus a compatible current `amneziawg-go` or AWG 3.1 kernel module. Do not mix a new userspace tool with an old kernel module: an old module may allow interface creation but reject the subsequent configuration.
 
 For the AWG 3.1 profile the configurator emits:

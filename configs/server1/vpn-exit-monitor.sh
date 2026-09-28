@@ -5,7 +5,7 @@ TAG="vpn-exit-monitor"
 
 VPN_NET_1="<AWG_NET>"
 VPN_NET_2="<WG_IN_NET>"
-WG_EXIT_S2_IP="<WG_EXIT_S2_IP>"
+TABLES=(200)
 
 flush_vpn_conntrack() {
     logger -t "$TAG" "Flushing VPN conntrack"
@@ -17,16 +17,33 @@ flush_vpn_conntrack() {
     fi
 }
 
+selected_exit() {
+    local table route
+    for table in "${TABLES[@]}"; do
+        route="$(ip -4 route show table "$table" default proto bird 2>/dev/null | head -n 1)"
+        if [[ -n "$route" ]]; then
+            printf '%s|%s\n' "$table" "$route"
+            return
+        fi
+    done
+    printf 'main\n'
+}
+
+last_exit="$(selected_exit)"
+logger -t "$TAG" "Initial selected exit: $last_exit"
+
 ip monitor route | while IFS= read -r line
 do
     case "$line" in
-        "Deleted default via ${WG_EXIT_S2_IP} dev wg-exit table 200 proto bird"*)
-            logger -t "$TAG" "VPN exit DOWN: $line"
-            flush_vpn_conntrack
-            ;;
-        "default via ${WG_EXIT_S2_IP} dev wg-exit table 200 proto bird"*)
-            logger -t "$TAG" "VPN exit UP: $line"
-            flush_vpn_conntrack
+        *default*" proto bird"*)
+            [[ "$line" == *" table 200 "* ]] || continue
+            sleep 0.1
+            current_exit="$(selected_exit)"
+            if [[ "$current_exit" != "$last_exit" ]]; then
+                logger -t "$TAG" "Selected VPN exit changed: $last_exit -> $current_exit"
+                flush_vpn_conntrack
+                last_exit="$current_exit"
+            fi
             ;;
     esac
 done

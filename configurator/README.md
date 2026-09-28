@@ -21,6 +21,7 @@ Opening the GitHub Pages site itself naturally downloads the static HTML/CSS/JS 
 The configurator produces:
 
 - one Server1 WireGuard config per exit (`wg-exit.conf`, `wg-exit2.conf`, ...);
+- persistent forwarding/rp_filter sysctl configuration for Server1 and forwarding configuration for every Server2;
 - Server1 BIRD configuration;
 - Server1 policy-routing systemd unit;
 - Server1 firewall unit with explicit INPUT permissions for the AWG UDP listen port, optional wg-in listen port, and BFD UDP/3784 from MikroTik and every Server2 exit;
@@ -74,6 +75,8 @@ Each exit has:
 - its own endpoint, keys, optional PSK/MTU and Server2 WAN interface.
 
 Exits are sorted by priority and mapped to consecutive Linux routing tables starting at the configured base table. Server1 policy rules try those tables in order, then naturally fall through to `main`.
+
+Validation rejects mismatched imported WireGuard private/public key pairs, identical peer tunnel addresses, overlapping transfer/client subnets, duplicate Server1 interface names, and table ranges containing Linux system tables 253–255. The first AllowedIPs entry must be a host `/32` to generate a wg-in client config; wg-in peer AllowedIPs must stay within the configured client subnet.
 
 The generated BIRD configuration tracks every exit independently with BFD. The generated conntrack monitor flushes VPN client state only when the effective selected exit changes.
 

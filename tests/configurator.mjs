@@ -86,6 +86,8 @@ const api = expose(documentMock, NodeMock, navigatorMock, locationMock, URLMock,
 const keyA = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 const keyB = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
 const keyC = "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=";
+const publicA = api.x25519PublicFromPrivate(keyA);
+const publicB = api.x25519PublicFromPrivate(keyB);
 
 element("paste-s1").value = `[Interface]
 Address = fd00::1/64, 10.77.66.1/30
@@ -94,7 +96,7 @@ MTU = 1380
 Table = off
 
 [Peer]
-PublicKey = ${keyB}
+PublicKey = ${publicB}
 PresharedKey = ${keyC}
 Endpoint = 203.0.113.20:51830
 AllowedIPs = 0.0.0.0/0
@@ -108,7 +110,7 @@ PrivateKey = ${keyB}
 MTU = 1380
 
 [Peer]
-PublicKey = ${keyA}
+PublicKey = ${publicA}
 PresharedKey = ${keyC}
 AllowedIPs = 10.77.66.1/32, 10.88.99.0/24, 10.88.100.0/24
 `;
@@ -181,10 +183,43 @@ assert.equal(element("wg-in-peer-public").value, keyB);
 assert.equal(element("wg-in-peer-allowed").value, "10.88.100.2/32");
 
 assert.equal(api.validate().ok, true, "Reference topology must validate");
+// Both imported files can be syntactically valid while referring to different
+// key pairs. Reject this before emitting configs that will never handshake.
+element("s1-public").value = publicB;
+assert.equal(api.validate().ok, false, "Mismatched imported Server1 private/public keys must be rejected");
+element("s1-public").value = publicA;
+element("s2-public").value = publicA;
+assert.equal(api.validate().ok, false, "Mismatched imported Server2 private/public keys must be rejected");
+element("s2-public").value = publicB;
+
+element("s2-address").value = element("s1-address").value;
+assert.equal(api.validate().ok, false, "A tunnel cannot use the same local and remote address");
+element("s2-address").value = "10.77.66.2/30";
+element("wg-in-net").value = "10.88.99.0/25";
+assert.equal(api.validate().ok, false, "AWG and wg-in client subnets must not overlap");
+element("wg-in-net").value = "10.88.100.0/24";
+element("wg-in-peer-allowed").value = "0.0.0.0/0";
+assert.equal(api.validate().ok, false, "wg-in AllowedIPs must not install a default route on Server1");
+element("wg-in-peer-allowed").value = "10.88.100.2/32";
+element("awg-net").value = "10.77.66.0/24";
+assert.equal(api.validate().ok, false, "An exit subnet must not overlap AWG client addresses");
+element("awg-net").value = "10.88.99.0/24";
+element("route-table").value = "254";
+assert.equal(api.validate().ok, false, "BIRD must not install a default route in Linux main table 254");
+element("route-table").value = "200";
+element("s1-exit-if").value = "wg-in";
+assert.equal(api.validate().ok, false, "An exit must not overwrite the wg-in configuration");
+element("s1-exit-if").value = "awg0";
+assert.equal(api.validate().ok, false, "An exit must not collide with the incoming AWG interface");
+element("s1-exit-if").value = "wg-exit";
+assert.equal(api.validate().ok, true, "Reference topology must still validate after restoring fields");
 api.generateFiles();
 
 const files = api.state.generated;
-assert.equal(Object.keys(files).length, 11, "Expected complete generated bundle including wg-in");
+assert.equal(Object.keys(files).length, 13, "Expected complete generated bundle including wg-in and persistent sysctl configs");
+assert.match(files["server1/90-vpn-failover.conf"], /net\.ipv4\.ip_forward = 1/);
+assert.match(files["server1/90-vpn-failover.conf"], /net\.ipv4\.conf\.all\.rp_filter = 2/);
+assert.match(files["server2/90-vpn-failover.conf"], /net\.ipv4\.ip_forward = 1/);
 assert.match(files["server1/wg-exit.conf"], /Table = off/);
 assert.match(files["server1/wg-exit.conf"], /MTU = 1380/);
 assert.match(files["server1/wg-exit.conf"], new RegExp("PresharedKey = " + keyC.replace(/[.*+?^$()|[\]\\]/g, "\\$&")));
@@ -249,6 +284,8 @@ assert.match(files["mikrotik/bfd-failover.rsc"], /check-gateway=bfd comment="VPN
 assert.match(files["mikrotik/bfd-failover.rsc"], /action=fasttrack-connection/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /connection-mark=no-mark/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /in-interface-list=!WAN/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /connection-state=new connection-mark=no-mark/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /in-interface-list=!WAN in-interface=!"wg-awg-proxy-1"/, "Return traffic entering the AWG interface must not be policy-routed back into the tunnel");
 assert.match(files["mikrotik/bfd-failover.rsc"], /chain=input protocol=udp dst-port=3784 src-address=10\.88\.99\.1\/32 dst-address=10\.88\.99\.4\/32 in-interface="wg-awg-proxy-1" comment="VPN_BFD_INPUT"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /place-before=\(\$inputDrop->0\)/);
 assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /^\s*:return\s*$/m, "RouterOS 7.24.x requires a value for :return; watcher must not emit bare :return");
@@ -265,6 +302,8 @@ assert.match(files["mikrotik/bfd-failover.rsc"], /:if \(\[:typeof \$vpnBfdLastSt
 }
 assert.match(files["INSTALL.txt"], /vpn-failover-firewall\.service/);
 assert.match(files["INSTALL.txt"], /wg-quick@wg-in/);
+assert.match(files["INSTALL.txt"], /server1\/90-vpn-failover\.conf -> \/etc\/sysctl\.d\/90-vpn-failover\.conf/);
+assert.match(files["INSTALL.txt"], /sysctl --system/);
 assert.doesNotMatch(files["INSTALL.txt"], /^\s*iptables -t nat .*POSTROUTING -o eth0 -j MASQUERADE/m, "Install guide must not execute a duplicate broad NAT rule");
 
 // Multi-exit acceptance: Server1 maintains independent tunnels and ordered policy tables.
@@ -278,9 +317,9 @@ api.state.extraExits = [{
   endpoint: "198.51.100.20",
   port: "51830",
   s1Private: keyA,
-  s1Public: keyA,
+  s1Public: publicA,
   s2Private: keyB,
-  s2Public: keyB,
+  s2Public: publicB,
   psk1: "",
   psk2: "",
   s1Mtu: "",
@@ -294,7 +333,8 @@ assert.equal(api.validate().ok, true, "Two-exit topology must validate");
 api.generateFiles();
 let multi = api.state.generated;
 
-assert.equal(Object.keys(multi).length, 14, "Second exit must add Server1 WG plus Server2 WG/BIRD files");
+assert.equal(Object.keys(multi).length, 17, "Second exit must add Server1 WG plus Server2 WG/BIRD/sysctl files");
+assert.match(multi["server2-2/90-vpn-failover.conf"], /net\.ipv4\.ip_forward = 1/);
 assert.match(multi["server1/wg-exit2.conf"], /Address = 10\.77\.67\.1\/30/);
 assert.match(multi["server1/wg-exit2.conf"], /Endpoint = 198\.51\.100\.20:51830/);
 assert.match(multi["server2-2/wg-exit.conf"], /Address = 10\.77\.67\.2\/30/);
@@ -346,6 +386,17 @@ api.state.extraExits[0].s2Address = "10.77.66.2/30";
 assert.equal(api.validate().ok, false, "Reused wg-exit transfer subnet must be rejected");
 api.state.extraExits[0].s1Address = "10.77.67.1/30";
 api.state.extraExits[0].s2Address = "10.77.67.2/30";
+api.state.extraExits[0].s1Address = "10.77.66.5/29";
+api.state.extraExits[0].s2Address = "10.77.66.6/29";
+assert.equal(api.validate().ok, false, "Partially overlapping exit transfer subnets must be rejected");
+api.state.extraExits[0].s1Address = "10.77.67.1/30";
+api.state.extraExits[0].s2Address = "10.77.67.2/30";
+api.state.extraExits[0].s1Public = publicB;
+assert.equal(api.validate().ok, false, "Mismatched extra exit key pair must be rejected");
+api.state.extraExits[0].s1Public = publicA;
+element("route-table").value = "252";
+assert.equal(api.validate().ok, false, "Multi-exit table range must not cross Linux reserved table 253");
+element("route-table").value = "200";
 
 api.state.extraExits = [];
 assert.equal(api.validate().ok, true, "Single-exit topology must remain valid after multi-exit tests");
@@ -465,6 +516,16 @@ assert.equal(api.x25519PublicFromPrivate(element("awg-peer-private").value), ele
 assert.equal(api.x25519PublicFromPrivate(element("wg-in-private").value), element("wg-in-public").value);
 assert.equal(api.x25519PublicFromPrivate(element("wg-in-peer-private").value), element("wg-in-peer-public").value);
 assert.equal(api.validate().ok, true, "Locally generated AWG/WG topology must validate");
+element("awg-public").value = publicA;
+assert.equal(api.validate().ok, false, "A modified AWG public key must be rejected");
+element("awg-public").value = api.x25519PublicFromPrivate(element("awg-private").value);
+element("wg-in-peer-allowed").value = "10.88.100.0/24";
+assert.equal(api.validate().ok, false, "Generated wg-in client must have a /32 host address");
+element("wg-in-peer-allowed").value = "10.88.100.2/32";
+element("awg-mtu").value = "invalid";
+assert.equal(api.validate().ok, false, "Generated AWG MTU must be validated");
+element("awg-mtu").value = "1280";
+assert.equal(api.validate().ok, true, "Generated topology must validate after restoring keys and address");
 api.generateFiles();
 
 const generatedModeFiles = api.state.generated;
@@ -496,6 +557,15 @@ assert.match(generatedModeFiles["clients/wg-in-client.conf"], /Endpoint = 203\.0
 assert.match(generatedModeFiles["clients/wg-in-client.conf"], /Address = 10\.88\.100\.2\/32/);
 assert.match(generatedModeFiles["server1/vpn-failover-firewall.service"], /--dport 51820 .*vpn-failover-listener/);
 assert.match(generatedModeFiles["server1/vpn-failover-firewall.service"], /--dport 51999 .*vpn-failover-listener/);
+assert.match(generatedModeFiles["INSTALL.txt"], /server1\/awg0\.conf -> \/etc\/amnezia\/amneziawg\/awg0\.conf/);
+assert.match(generatedModeFiles["INSTALL.txt"], /systemctl enable --now awg-quick@awg0/);
+assert.match(generatedModeFiles["INSTALL.txt"], /chmod 600 \/etc\/amnezia\/amneziawg\/awg0\.conf/);
+assert.match(generatedModeFiles["INSTALL.txt"], /clients\/wg-in-client\.conf/);
+api.state.lang = "en";
+api.generateFiles();
+assert.match(api.state.generated["INSTALL.txt"], /chmod 755 \/usr\/local\/sbin\/vpn-exit-monitor\.sh/);
+assert.match(api.state.generated["INSTALL.txt"], /systemctl enable --now awg-quick@awg0/);
+api.state.lang = "ru";
 
 // AWG 3.0 keeps Header Protection/timing parameters but omits 3.1-only toggles.
 element("awg-profile").value = "awg3";
@@ -524,6 +594,9 @@ element("s2-psk").value = keyC;
 element("s1-wan").value = "eth0;touch";
 assert.equal(api.validate().ok, false, "Unsafe Linux interface name must be rejected");
 element("s1-wan").value = "eth0";
+element("s1-exit-if").value = "wg-exit@backup";
+assert.equal(api.validate().ok, false, "Interface names unsupported by wg-quick must be rejected");
+element("s1-exit-if").value = "wg-exit";
 
 element("mt-dst").value = "not-a-prefix";
 assert.equal(api.validate().ok, false, "Invalid MikroTik destination must be rejected");
