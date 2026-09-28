@@ -280,6 +280,23 @@ BFD — это control-plane traffic, который завершается на
 
 Генератор создаёт узкие правила по source/destination/interface, а не общий allow UDP/3784 со всех сетей.
 
+### RouterOS: почему routing-mark не уходит в black hole
+
+В policy-mode генератор создаёт отдельную FIB-таблицу, например `VPN`, и mangle ставит `new-routing-mark=VPN`. В этой таблице находится только BFD-controlled default через Server1.
+
+При BFD DOWN этот default становится inactive. По текущей документации RouterOS failed lookup из mangle не является black hole: при стандартном порядке `mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main` обработка продолжается. Генератор дополнительно создаёт явный fallback:
+
+```routeros
+/routing rule
+add action=lookup routing-mark=VPN table=main comment="VPN_BFD_FALLBACK"
+```
+
+Здесь принципиально используется `action=lookup`, а не `lookup-only-in-table`: `lookup` допускает дальнейший fallback, тогда как `lookup-only-in-table` используется для режима без fallback и при отсутствии маршрута делает destination недоступным.
+
+В самой таблице `VPN` не должно оставаться старого резервного default `distance=2` через WAN. Иначе lookup в `VPN` успешно выберет его и до fallback в `main` RouterOS не дойдёт.
+
+Если на MikroTik вручную менялся `/routing/settings policy-rules`, перед импортом нужно проверить, что `mangle` выполняется до `user/main`, а `main` остаётся в routing decision chain.
+
 ## Почему BFD, а не ping/Netwatch или рекурсивные маршруты
 
 **Важное архитектурное допущение этого проекта:** доступ и к Server1, и к каждому Server2 осуществляется через публичный Internet. Межсерверный `wg-exit` также устанавливается на публичный Internet endpoint Server2, а не через отдельную приватную underlay-сеть.
