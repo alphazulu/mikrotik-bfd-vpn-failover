@@ -456,6 +456,30 @@ assert.doesNotMatch(directMikrotik, /\/routing table add/);
 assert.doesNotMatch(directMikrotik, /dst == 0\.0\.0\.0\/0/);
 assert.match(api.state.generated["INSTALL.txt"], /BGP-префиксы в main|BGP prefixes in main/i);
 
+element("mt-direct-routes").value = "";
+element("mt-dns-servers").value = "1.1.1.1, 8.8.8.8 1.1.1.1";
+assert.equal(api.validate().ok, true, "DNS-only direct mode must validate without other destinations");
+api.generateFiles();
+assert.match(api.state.generated["mikrotik/bfd-failover.rsc"], /routing-table="main"/);
+assert.match(api.state.generated["mikrotik/bfd-failover.rsc"], /dst == 1\.1\.1\.1\/32/);
+assert.match(api.state.generated["mikrotik/bfd-failover.rsc"], /dst == 8\.8\.8\.8\/32/);
+assert.equal((api.state.generated["server1/bird.conf"].match(/route 1\.1\.1\.1\/32 reject;/g) || []).length, 1,
+  "A repeated DNS IP must be announced once");
+assert.match(api.state.generated["server1/bird.conf"], /route 8\.8\.8\.8\/32 reject;/);
+assert.doesNotMatch(api.state.generated["mikrotik/bfd-failover.rsc"], /dst == 0\.0\.0\.0\/0/);
+
+element("mt-direct-routes").value = "1.1.1.1, 198.51.100.0/24";
+api.generateFiles();
+assert.equal((api.state.generated["server1/bird.conf"].match(/route 1\.1\.1\.1\/32 reject;/g) || []).length, 1,
+  "DNS and arbitrary destination fields must deduplicate the same host");
+assert.match(api.state.generated["server1/bird.conf"], /route 198\.51\.100\.0\/24 reject;/);
+
+element("mt-dns-servers").value = "1.1.1.1/32";
+assert.equal(api.validate().ok, false, "DNS inputs must be plain IPv4 addresses");
+element("mt-dns-servers").value = "resolver.example";
+assert.equal(api.validate().ok, false, "Domain names must not be treated as stable DNS server IPs");
+element("mt-dns-servers").value = "";
+
 element("mt-direct-routes").value = "0.0.0.0/0";
 assert.equal(api.validate().ok, true, "Full Internet direct mode must validate");
 api.generateFiles();

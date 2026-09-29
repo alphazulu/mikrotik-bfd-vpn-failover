@@ -94,7 +94,7 @@ Russian: [Несколько Server2 и приоритетный failover](docs/
 The configurator supports two modes:
 
 1. **Address-list + mangle.** It creates connection/routing marks and a dedicated table receiving the configured prefix from Server1 via BGP. If BFD detects loss of MikroTik ↔ Server1 reachability, BGP withdraws the route and an explicit `/routing rule action=lookup table=main` provides fallback. Reply packets arriving over AWG are excluded from re-marking; catch-all fasttrack applies only to unmarked connections. Selective `CM_VPN` cleanup remains.
-2. **Direct routes.** Server1 advertises the selected IPv4/CIDR prefixes into `main` through BGP, without mangle or connection marks. Loss of BFD withdraws them. Requested `0.0.0.0/0` expands to two `/1` prefixes that take precedence over the regular WAN `/0` while the tunnel is alive.
+2. **Direct routes.** Enter DNS server IPs and other IPv4/CIDR destinations separately. Server1 advertises DNS IPs as `/32` and the other prefixes into `main` through BGP, without mangle or connection marks. MikroTik DNS settings are unchanged. Loss of BFD withdraws the routes. Requested `0.0.0.0/0` expands to two `/1` prefixes that take precedence over the regular WAN `/0` while the tunnel is alive.
 
 Selective MikroTik conntrack cleanup is intentionally omitted in direct-route mode because there is no connection mark.
 

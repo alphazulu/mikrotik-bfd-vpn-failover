@@ -531,7 +531,7 @@ function parseDirectRouteDestinations(raw) {
   for (const token of tokens) {
     let normalized = "";
     if (isIpv4(token)) {
-      normalized = token + "/32";
+      normalized = intToIp(ipToInt(token)) + "/32";
     } else {
       const parsed = parseCidr(token);
       if (parsed) normalized = parsed.network;
@@ -545,6 +545,19 @@ function parseDirectRouteDestinations(raw) {
     if (!values.includes(normalized)) values.push(normalized);
   }
 
+  return { values, invalid };
+}
+
+function parseDnsServerIps(raw) {
+  const values = [];
+  const invalid = [];
+  for (const token of String(raw || "").split(/[\s,;]+/).filter(Boolean)) {
+    if (!isIpv4(token)) invalid.push(token);
+    else {
+      const prefix = intToIp(ipToInt(token)) + "/32";
+      if (!values.includes(prefix)) values.push(prefix);
+    }
+  }
   return { values, invalid };
 }
 
@@ -1389,13 +1402,18 @@ function validate() {
 
   if (mtPolicyMode === "direct") {
     const direct = parseDirectRouteDestinations(value("mt-direct-routes"));
+    const dns = parseDnsServerIps(value("mt-dns-servers"));
     if (direct.invalid.length) {
       add("bad", "Некорректные назначения прямых маршрутов: " + direct.invalid.join(", "), "Invalid direct-route destinations: " + direct.invalid.join(", "));
     }
-    if (!direct.values.length) {
-      add("bad", "В режиме прямых маршрутов нужно указать хотя бы один IP или CIDR", "Direct-route mode requires at least one IP or CIDR");
-    } else if (!direct.invalid.length) {
-      add("good", "Будет создано прямых маршрутов: " + direct.values.length, "Direct routes to generate: " + direct.values.length);
+    if (dns.invalid.length) {
+      add("bad", "IP DNS-серверов должны быть IPv4 без маски: " + dns.invalid.join(", "), "DNS server IPs must be IPv4 without a prefix: " + dns.invalid.join(", "));
+    }
+    const destinations = [...new Set([...direct.values, ...dns.values])];
+    if (!destinations.length) {
+      add("bad", "Укажите хотя бы один IP DNS-сервера или другое назначение IP/CIDR", "Enter at least one DNS server IP or another IP/CIDR destination");
+    } else if (!direct.invalid.length && !dns.invalid.length) {
+      add("good", "Будет анонсировано префиксов: " + destinations.length, "Prefixes to advertise: " + destinations.length);
     }
     add("warn", "В режиме прямых маршрутов mangle, connection-mark и selective conntrack cleanup на MikroTik не создаются", "Direct-route mode does not generate mangle, connection marks, or selective MikroTik conntrack cleanup");
   }
@@ -1567,7 +1585,8 @@ function generateFiles() {
   const mtWanList = value("mt-wan-list");
   const mtAddressLists = value("mt-address-lists").split(",").map((x) => x.trim()).filter(Boolean);
   const mtDirectRoutes = parseDirectRouteDestinations(value("mt-direct-routes")).values;
-  const mtBgpPrefixes = bgpAdvertisedPrefixes(mtPolicyMode, mtDst, mtDirectRoutes);
+  const mtDnsServers = parseDnsServerIps(value("mt-dns-servers")).values;
+  const mtBgpPrefixes = bgpAdvertisedPrefixes(mtPolicyMode, mtDst, [...mtDirectRoutes, ...mtDnsServers]);
   const s1BgpAs = Number(value("s1-bgp-as"));
   const mtBgpAs = Number(value("mt-bgp-as"));
   const mtBgpInstance = value("mt-bgp-instance");
@@ -2290,10 +2309,10 @@ ${mikrotikPolicyBlock}
   }
 
   const mtModeInstallRu = mtPolicyMode === "direct"
-    ? "Режим MikroTik: BGP-префиксы в main. При 0.0.0.0/0 анонсируются два /1. Mangle/connection-mark и выборочная очистка conntrack не создаются."
+    ? "Режим MikroTik: BGP-префиксы в main. DNS IP анонсируются как /32 (" + mtDnsServers.length + "), настройки DNS роутера не меняются. При 0.0.0.0/0 анонсируются два /1. Mangle/connection-mark и выборочная очистка conntrack не создаются."
     : "Режим MikroTik: address-list + mangle + отдельная таблица " + mtTable + ". BGP анонсирует " + parseCidr(mtDst).network + " только пока AWG/BFD работает; при отзыве маршрута правило VPN_BFD_FALLBACK ищет в main. Fasttrack ограничен соединениями без метки.";
   const mtModeInstallEn = mtPolicyMode === "direct"
-    ? "MikroTik mode: BGP prefixes in main. A requested 0.0.0.0/0 is advertised as two /1s. No mangle, connection marks, or selective conntrack cleanup."
+    ? "MikroTik mode: BGP prefixes in main. DNS IPs are advertised as /32 (" + mtDnsServers.length + "); router DNS settings are unchanged. A requested 0.0.0.0/0 is advertised as two /1s. No mangle, connection marks, or selective conntrack cleanup."
     : "MikroTik mode: address-list + mangle in dedicated table " + mtTable + ". BGP advertises " + parseCidr(mtDst).network + " while AWG/BFD is alive; VPN_BFD_FALLBACK uses main when the prefix is withdrawn. Fasttrack is limited to unmarked connections.";
 
   const wgInInstallRu = hasWgInConfig
@@ -2709,7 +2728,7 @@ function clearAll() {
    "awg-random-trailers", "awg-disable-cookies", "awg-i1", "awg-i2", "awg-i3", "awg-i4", "awg-i5",
    "wg-in-private", "wg-in-public", "wg-in-peer-private", "wg-in-peer-public", "wg-in-psk", "wg-in-address", "wg-in-port",
    "wg-in-peer-allowed", "s1-mtu", "s2-mtu", "awg-server", "awg-port", "awg-mt", "awg-net",
-   "wg-in-net", "mt-address-lists", "mt-direct-routes"].forEach((id) => { $(id).value = ""; });
+   "wg-in-net", "mt-address-lists", "mt-direct-routes", "mt-dns-servers"].forEach((id) => { $(id).value = ""; });
 
   ["file-s1", "file-s2", "file-in", "file-wgin"].forEach((id) => { $(id).value = ""; });
 

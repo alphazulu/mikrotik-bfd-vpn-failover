@@ -45,7 +45,7 @@ The UI supports Russian and English from one implementation so both interfaces s
 The UI offers two mutually exclusive modes:
 
 - **Address-list + mangle** — generates connection marks, a dedicated routing table, and selective conntrack cleanup. The routing mark is the table name. When BGP withdraws the route on BFD failure, one explicit `/routing rule` falls back to `main`. Catch-all fasttrack rules are limited to unmarked connections.
-- **Direct routes** — BGP installs the supplied IPv4/CIDR destinations in `main`. A requested `0.0.0.0/0` becomes two `/1` routes so the tunnel takes precedence over a regular WAN default. No mangle or connection marks are generated.
+- **Direct routes** — enter DNS server IPs and other IPv4/CIDR destinations separately. BGP installs them in `main`, using `/32` for DNS IPs. A requested `0.0.0.0/0` becomes two `/1` routes so the tunnel takes precedence over a regular WAN default. The router's DNS settings are not changed. No mangle or connection marks are generated.
 
 Direct-route mode deliberately omits selective MikroTik conntrack cleanup because there is no connection mark to target.
 
