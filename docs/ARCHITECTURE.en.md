@@ -221,7 +221,7 @@ Policy mode requires a dedicated table other than `main`.
 
 ### Direct-route mode
 
-No policy-routing marks are used. Server1 advertises the requested IPv4/CIDR destinations via BGP; RouterOS installs them in `main` through the Server1 AWG gateway. A requested `0.0.0.0/0` is announced as two `/1` prefixes so that it wins longest-prefix selection over the regular WAN `/0` while the tunnel is alive.
+No policy-routing marks are used. Enter DNS server IPs and other IPv4/CIDR destinations separately. DNS IPs are advertised as `/32` without changing MikroTik DNS settings. Server1 advertises the prefixes via BGP; RouterOS installs them in `main` through the Server1 AWG gateway. A requested `0.0.0.0/0` is announced as two `/1` prefixes so that it wins longest-prefix selection over the regular WAN `/0` while the tunnel is alive.
 
 When BFD is DOWN, BGP withdraws those prefixes and RouterOS falls back to other matching routes, usually the regular WAN default.
 

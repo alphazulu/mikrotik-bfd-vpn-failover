@@ -342,7 +342,7 @@ RouterOS 7.20+ is required. MikroTik INPUT must accept BFD UDP/3784 and BGP TCP/
 Then choose one of the two generated MikroTik modes:
 
 - **Address-list + mangle:** the dedicated table receives a BGP prefix, and `new-routing-mark` references that table (for example `VPN`). When BGP withdraws it, `/routing rule action=lookup routing-mark=<table> table=main` provides fallback. The watcher tracks the active dynamic route and selectively clears `CM_VPN` conntrack. Catch-all fasttrack rules are limited to `connection-mark=no-mark`.
-- **Direct routes:** BGP installs selected prefixes into `main` over AWG without mangle or marks. Requested `/0` becomes two `/1` prefixes to outrank the normal WAN default while the tunnel is available and disappear on failure.
+- **Direct routes:** the configurator accepts DNS server IPs (without prefixes) and arbitrary IPv4/CIDR destinations separately. BGP installs them in `main` over AWG, using `/32` for DNS servers; `/ip dns` settings are unchanged. Routes disappear when BFD goes down. A requested `/0` becomes two `/1` prefixes to outrank the normal WAN default while the tunnel is available.
 
 In direct-route mode, existing connections are not selectively flushed by the generated MikroTik script because no connection mark exists.
 

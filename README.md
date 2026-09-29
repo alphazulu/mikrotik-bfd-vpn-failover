@@ -100,7 +100,7 @@ English: [Multiple Server2 exits and prioritized failover](docs/MULTI_EXIT.en.md
 Конфигуратор поддерживает два варианта:
 
 1. **Address-list + mangle.** Для выбранных `dst-address-list` создаются `mark-connection`, `mark-routing` и отдельная routing table с маршрутом, получаемым от Server1 по BGP. В RouterOS v7 `new-routing-mark` ссылается на эту таблицу (например, `VPN`). Если BFD обнаруживает потерю пути MikroTik ↔ Server1, BGP отзывает префикс, и `/routing rule action=lookup table=main` выполняет fallback. Входящий AWG-интерфейс исключён из повторной маркировки ответов, общие fasttrack-правила ограничены `connection-mark=no-mark`. Выборочная очистка `CM_VPN` остаётся.
-2. **Прямые маршруты.** Пользователь задаёт IPv4/CIDR, Server1 анонсирует их по BGP в `main` без mangle и connection marks. После потери BFD маршруты отзываются. Запрос `0.0.0.0/0` преобразуется в два маршрута `/1`, которые при живом туннеле имеют приоритет над штатным WAN default `/0`.
+2. **Прямые маршруты.** Пользователь отдельно задаёт IP DNS-серверов и другие IPv4/CIDR; Server1 анонсирует DNS как `/32` и остальные префиксы по BGP в `main` без mangle и connection marks. Настройки DNS MikroTik не меняются. После потери BFD маршруты отзываются. Запрос `0.0.0.0/0` преобразуется в два маршрута `/1`, которые при живом туннеле имеют приоритет над штатным WAN default `/0`.
 
 Во втором режиме selective conntrack cleanup на MikroTik намеренно не создаётся, поскольку нет connection mark.
 

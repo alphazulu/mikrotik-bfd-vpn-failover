@@ -272,10 +272,13 @@
       </div>
 
       <div id="mt-direct-fields" class="grid form-grid hidden">
-        <label data-ru="Назначения для прямых маршрутов (IP/CIDR, через запятую или пробел)" data-en="Direct route destinations (IP/CIDR, comma or whitespace separated)">Назначения для прямых маршрутов (IP/CIDR, через запятую или пробел)
+        <label data-ru="IP DNS-серверов через VPN (IPv4, через запятую или пробел)" data-en="DNS server IPs over VPN (IPv4, comma or whitespace separated)">IP DNS-серверов через VPN (IPv4, через запятую или пробел)
+          <textarea id="mt-dns-servers" rows="2" spellcheck="false" data-placeholder-ru="1.1.1.1, 8.8.8.8" data-placeholder-en="1.1.1.1, 8.8.8.8" placeholder="1.1.1.1, 8.8.8.8"></textarea>
+        </label>
+        <label data-ru="Другие назначения (IP/CIDR, через запятую или пробел)" data-en="Other destinations (IP/CIDR, comma or whitespace separated)">Другие назначения (IP/CIDR, через запятую или пробел)
           <textarea id="mt-direct-routes" rows="5" spellcheck="false" data-placeholder-ru="203.0.113.10, 198.51.100.0/24" data-placeholder-en="203.0.113.10, 198.51.100.0/24" placeholder="203.0.113.10, 198.51.100.0/24"></textarea>
         </label>
-        <div class="hint" data-ru="В этом режиме mangle и connection-mark не создаются. BGP устанавливает префиксы в main и снимает их при потере BFD. 0.0.0.0/0 разворачивается в два /1, чтобы сохранить обычный WAN default как резерв." data-en="This mode creates no mangle or connection marks. BGP installs prefixes in main and withdraws them when BFD goes down. 0.0.0.0/0 expands to two /1 routes, preserving the regular WAN default as fallback.">В этом режиме mangle и connection-mark не создаются. BGP устанавливает префиксы в main и снимает их при потере BFD. 0.0.0.0/0 разворачивается в два /1, чтобы сохранить обычный WAN default как резерв.</div>
+        <div class="hint" data-ru="IP DNS-серверов анонсируются как /32, остальные адреса и сети — как задано. BGP устанавливает эти маршруты в main и снимает их при потере BFD. Настройки DNS MikroTik не меняются. Mangle и connection-mark не создаются. 0.0.0.0/0 разворачивается в два /1, чтобы сохранить обычный WAN default как резерв." data-en="DNS server IPs are advertised as /32; other IPs and networks use their supplied prefixes. BGP installs these routes in main and withdraws them when BFD goes down. MikroTik DNS settings are not changed. No mangle or connection marks are created. 0.0.0.0/0 expands to two /1 routes, preserving the regular WAN default as fallback.">IP DNS-серверов анонсируются как /32, остальные адреса и сети — как задано. BGP устанавливает эти маршруты в main и снимает их при потере BFD. Настройки DNS MikroTik не меняются. Mangle и connection-mark не создаются. 0.0.0.0/0 разворачивается в два /1, чтобы сохранить обычный WAN default как резерв.</div>
       </div>
 
       <div class="actions">
