@@ -302,7 +302,8 @@ assert.match(files["mikrotik/bfd-failover.rsc"], /chain=input protocol=udp dst-p
 assert.match(files["mikrotik/bfd-failover.rsc"], /chain=input protocol=tcp dst-port=179 src-address=10\.88\.99\.1\/32 dst-address=10\.88\.99\.4\/32 in-interface="wg-awg-proxy-1" comment="VPN_BGP_INPUT"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /place-before=\(\$inputDrop->0\)/);
 assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /^\s*:return\s*$/m, "RouterOS 7.24.x requires a value for :return; watcher must not emit bare :return");
-assert.match(files["mikrotik/bfd-failover.rsc"], /:local routeIds \[\/ip route find where routing-table="VPN" dst-address=0\.0\.0\.0\/0 gateway=10\.88\.99\.1 active=yes dynamic=yes\]/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /:local routeIds \[\/routing route find where routing-table="VPN" dst-address=0\.0\.0\.0\/0 bgp=yes active=yes\]/);
+assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /:local routeIds \[[^\n]*gateway=/, "Monitoring must not depend on how RouterOS renders the BGP next hop");
 assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /monitored route not found/, "Missing dynamic route is a normal DOWN state");
 assert.match(files["mikrotik/bfd-failover.rsc"], /:if \(\[:typeof \$vpnBfdLastState\] = "nothing"\) do=\{[\s\S]*?:set vpnBfdLastState \$currentState[\s\S]*?\} else=\{/);
 {
@@ -472,7 +473,7 @@ assert.equal(api.validate().ok, true, "Policy mode permits an explicitly selecte
 api.generateFiles();
 assert.match(api.state.generated["server1/bird.conf"], /route 198\.51\.100\.0\/24 reject;/);
 assert.match(api.state.generated["mikrotik/bfd-failover.rsc"], /dst == 198\.51\.100\.0\/24/);
-assert.match(api.state.generated["mikrotik/bfd-failover.rsc"], /routing-table="VPN" dst-address=198\.51\.100\.0\/24 gateway=10\.88\.99\.1 active=yes dynamic=yes/);
+assert.match(api.state.generated["mikrotik/bfd-failover.rsc"], /routing-table="VPN" dst-address=198\.51\.100\.0\/24 bgp=yes active=yes/);
 element("mt-dst").value = "0.0.0.0/0";
 
 element("mt-bgp-as").value = "65001";

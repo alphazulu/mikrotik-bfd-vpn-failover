@@ -33,7 +33,7 @@ iptables -t nat -S POSTROUTING
 ```routeros
 /routing bfd session print detail
 /routing bgp session print detail
-/ip route print detail where routing-table=VPN
+/routing route print detail where routing-table=VPN bgp=yes
 ```
 
 ## События маршрута на Server1
@@ -149,4 +149,4 @@ journalctl -t vpn-exit-monitor -f
 Script Error: missing value(s) of argument(s) value
 ```
 
-Для раннего выхода применяются вложенные `:if ... else={...}`. Начальное состояние запоминается без очистки, затем conntrack очищается только при изменении состояния динамического BGP-маршрута в таблице `VPN`. В direct mode этот планировщик не создаётся.
+Для раннего выхода применяются вложенные `:if ... else={...}`. Начальное состояние запоминается без очистки. Раз в секунду скрипт ищет в таблице `VPN` активный BGP-маршрут к настроенному префиксу; при его появлении или исчезновении очищает только соединения с меткой `CM_VPN`. Другие маршруты таблицы и текстовое представление gateway не влияют на проверку. В direct mode этот планировщик не создаётся.

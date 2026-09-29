@@ -64,7 +64,7 @@ add chain=prerouting action=mark-routing new-routing-mark="<MT_ROUTE_TABLE>" pas
 /system script
 add name=VPN-BFD-Conntrack policy=read,write,test source={
     :global vpnBfdLastState
-    :local routeIds [/ip route find where routing-table="<MT_ROUTE_TABLE>" dst-address=0.0.0.0/0 gateway=<AWG_SERVER_IP> active=yes dynamic=yes]
+    :local routeIds [/routing route find where routing-table="<MT_ROUTE_TABLE>" dst-address=0.0.0.0/0 bgp=yes active=yes]
     :local currentState "DOWN"
     :if ([:len $routeIds] > 0) do={ :set currentState "UP" }
     :if ([:typeof $vpnBfdLastState] = "nothing") do={

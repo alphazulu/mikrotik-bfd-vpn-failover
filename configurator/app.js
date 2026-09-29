@@ -2264,7 +2264,7 @@ add chain=${qRouter(mtBgpInstance + "-out")} rule="reject" comment="VPN_BGP_OUT"
 add name=VPN-BFD-Conntrack policy=read,write,test source={
     :global vpnBfdLastState
 
-    :local routeIds [/ip route find where routing-table=${qRouter(mtTable)} dst-address=${parseCidr(mtDst).network} gateway=${awgServer} active=yes dynamic=yes]
+    :local routeIds [/routing route find where routing-table=${qRouter(mtTable)} dst-address=${parseCidr(mtDst).network} bgp=yes active=yes]
     :local currentState "DOWN"
     :if ([:len $routeIds] > 0) do={ :set currentState "UP" }
 
