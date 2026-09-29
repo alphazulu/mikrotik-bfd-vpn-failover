@@ -1,12 +1,16 @@
-# RouterOS 7 sanitized example for address-list + mangle mode.
-# Review object names before importing. The dst-address-list must already exist.
-# <MT_ROUTE_TABLE> must not be "main".
+# RouterOS 7.20+ sanitized example: address-list + mangle mode.
+# Set distinct private ASNs and review existing object names before import.
+# Server1 BIRD must export this prefix from a separate mt_advertised table
+# and accept TCP/179 on the AWG tunnel. Use the browser configurator for
+# custom prefixes and direct-route mode.
+
+# Migration: remove only the former generator's static-BFD route.
+/ip route remove [find where comment="VPN_BFD_PRIMARY"]
 
 /ip address
 add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF> comment="AWG tunnel P2P address"
 
-# BFD is addressed to the router itself, so it traverses chain=input.
-# Insert the narrow UDP/3784 accept before the first INPUT drop if one exists.
+# Single-hop BFD and BGP terminate at the router: allow both in INPUT.
 :if ([:len [/ip firewall filter find where comment="VPN_BFD_INPUT"]] = 0) do={
     :local inputDrop [/ip firewall filter find where chain=input action=drop]
     :if ([:len $inputDrop] > 0) do={
@@ -15,79 +19,62 @@ add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF> c
         /ip firewall filter add action=accept chain=input protocol=udp dst-port=3784 src-address=<AWG_SERVER_IP>/32 dst-address=<AWG_MIKROTIK_IP>/32 in-interface=<MT_AWG_IF> comment="VPN_BFD_INPUT"
     }
 }
+:if ([:len [/ip firewall filter find where comment="VPN_BGP_INPUT"]] = 0) do={
+    :local inputDrop [/ip firewall filter find where chain=input action=drop]
+    :if ([:len $inputDrop] > 0) do={
+        /ip firewall filter add action=accept chain=input protocol=tcp dst-port=179 src-address=<AWG_SERVER_IP>/32 dst-address=<AWG_MIKROTIK_IP>/32 in-interface=<MT_AWG_IF> comment="VPN_BGP_INPUT" place-before=($inputDrop->0)
+    } else={
+        /ip firewall filter add action=accept chain=input protocol=tcp dst-port=179 src-address=<AWG_SERVER_IP>/32 dst-address=<AWG_MIKROTIK_IP>/32 in-interface=<MT_AWG_IF> comment="VPN_BGP_INPUT"
+    }
+}
 
 /routing bfd configuration
 add interfaces=<MT_AWG_IF> addresses=<AWG_SERVER_IP>/32 min-rx=500ms min-tx=500ms multiplier=3
 
 :if ([:len [/routing table find where name="<MT_ROUTE_TABLE>"]] = 0) do={ /routing table add fib name="<MT_ROUTE_TABLE>" }
 
-/ip route
-add check-gateway=bfd comment="VPN_BFD_PRIMARY" disabled=no distance=1 dst-address=0.0.0.0/0 gateway=<AWG_SERVER_IP>%<MT_AWG_IF> routing-table=<MT_ROUTE_TABLE> scope=30 target-scope=10
+# Accept only the chosen prefix, advertise no MikroTik routes to Server1.
+/routing filter rule
+add chain=vpn-bfd-in rule="if (dst == 0.0.0.0/0) { accept }"
+add chain=vpn-bfd-in rule="reject"
+add chain=vpn-bfd-out rule="reject"
 
+/routing bgp instance
+add name=vpn-bfd as=<MT_BGP_AS> router-id=<AWG_MIKROTIK_IP> routing-table=<MT_ROUTE_TABLE>
+/routing bgp connection
+add name=vpn-to-server1 instance=vpn-bfd remote.address=<AWG_SERVER_IP> remote.as=<SERVER1_BGP_AS> local.address=<AWG_MIKROTIK_IP> local.role=ebgp connect=yes listen=yes use-bfd=yes input.filter=vpn-bfd-in output.filter-chain=vpn-bfd-out
+
+# When BGP withdraws the prefix, action=lookup in main provides fallback.
+# Do not keep a WAN default inside <MT_ROUTE_TABLE>.
 /ip firewall mangle
 add chain=prerouting action=mark-connection new-connection-mark="CM_VPN" passthrough=yes connection-state=new connection-mark=no-mark dst-address-type=!local dst-address-list="<DST_ADDRESS_LIST>" comment="VPN_POLICY_MARK"
-# The incoming AWG interface must be excluded: reply packets retain CM_VPN.
 add chain=prerouting action=mark-routing new-routing-mark="<MT_ROUTE_TABLE>" passthrough=yes connection-mark="CM_VPN" dst-address-type=!local in-interface-list=!<WAN_INTERFACE_LIST> in-interface=!"<MT_AWG_IF>" comment="VPN_POLICY_ROUTE"
 
-# RouterOS v7 requires new-routing-mark to reference an existing FIB table.
-# Current default policy-rules order is:
-# mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main.
-#
-# The mangle lookup tries <MT_ROUTE_TABLE> first. If its BFD default becomes
-# inactive, that lookup fails and RouterOS continues through the remaining
-# policy rules. The explicit user rule below performs lookup in main.
-#
-# action=lookup is intentional. Do NOT use lookup-only-in-table for fallback:
-# lookup allows processing to continue if the selected table has no route,
-# whereas lookup-only-in-table is the no-fallback form used to make traffic
-# unreachable when that table cannot resolve the destination.
-#
-# Migration note: remove/disable any old backup default route inside
-# <MT_ROUTE_TABLE> (for example a distance=2 route to the WAN gateway).
-# If it remains active, the mangle lookup succeeds inside <MT_ROUTE_TABLE> and
-# fallback to user/main is never reached.
-#
-# If /routing/settings policy-rules was customized, verify that mangle is
-# evaluated before user/main and that main remains in the decision chain.
-#
-# Make the fallback to main explicit:
 :if ([:len [/routing rule find where comment="VPN_BFD_FALLBACK"]] = 0) do={
     /routing rule add action=lookup routing-mark="<MT_ROUTE_TABLE>" table=main comment="VPN_BFD_FALLBACK"
 }
 
-# Fasttrack skips mangle. Limit catch-all fasttrack rules to unmarked connections.
 :foreach ftId in=[/ip firewall filter find where chain=forward action=fasttrack-connection] do={
     :local cm [/ip firewall filter get $ftId connection-mark]
-    :if ([:len $cm] = 0) do={
-        /ip firewall filter set $ftId connection-mark=no-mark
-    }
+    :if ([:len $cm] = 0) do={ /ip firewall filter set $ftId connection-mark=no-mark }
 }
 
+/system scheduler remove [find where name="VPN-BFD-Watch"]
+/system script remove [find where name="VPN-BFD-Conntrack"]
 /system script
 add name=VPN-BFD-Conntrack policy=read,write,test source={
     :global vpnBfdLastState
-    :local routeIds [/ip route find where comment="VPN_BFD_PRIMARY"]
-    :if ([:len $routeIds] = 0) do={
-        :log warning "VPN-BFD: monitored route not found"
+    :local routeIds [/ip route find where routing-table="<MT_ROUTE_TABLE>" dst-address=0.0.0.0/0 gateway=<AWG_SERVER_IP> active=yes dynamic=yes]
+    :local currentState "DOWN"
+    :if ([:len $routeIds] > 0) do={ :set currentState "UP" }
+    :if ([:typeof $vpnBfdLastState] = "nothing") do={
+        :set vpnBfdLastState $currentState
     } else={
-        :local routeId [:pick $routeIds 0]
-        :local routeActive [/ip route get $routeId active]
-        :local currentState "DOWN"
-        :if ($routeActive = true) do={ :set currentState "UP" }
-
-        :if ([:typeof $vpnBfdLastState] = "nothing") do={
+        :if ($currentState != $vpnBfdLastState) do={
+            /ip firewall connection remove [find where connection-mark="CM_VPN"]
             :set vpnBfdLastState $currentState
-            :log info ("VPN-BFD: initial state = " . $currentState)
-        } else={
-            :if ($currentState != $vpnBfdLastState) do={
-                :local connCount [:len [/ip firewall connection find where connection-mark="CM_VPN"]]
-                :log warning ("VPN-BFD: state changed " . $vpnBfdLastState . " -> " . $currentState . ", removing " . $connCount . " CM_VPN connections")
-                /ip firewall connection remove [find where connection-mark="CM_VPN"]
-                :set vpnBfdLastState $currentState
-            }
         }
     }
 }
-
 /system scheduler
 add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack start-time=startup

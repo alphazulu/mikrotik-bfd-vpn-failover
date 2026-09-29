@@ -9,6 +9,7 @@
 ```bash
 wg show
 birdc show bfd sessions
+birdc show protocols bgp_mt
 ip rule
 ip route show table 200
 # при дополнительных выходах:
@@ -31,10 +32,13 @@ iptables -t nat -S POSTROUTING
 
 ```routeros
 /routing bfd session print detail
-/ip route print detail where check-gateway=bfd
+/routing bgp session print detail
+/ip route print detail where routing-table=VPN
 ```
 
 ## События маршрута на Server1
+
+На MikroTik в таблице `VPN` должен появляться динамический BGP-маршрут к анонсируемому префиксу. При отключении AWG/BFD или падении BGP-сессии он исчезает, и правило `VPN_BFD_FALLBACK` направляет новые соединения через `main`. В direct mode проверяйте маршруты в `main`; запрос `0.0.0.0/0` превращается в два анонса `/1`.
 
 При потере Server2 ожидается удаление маршрута:
 
@@ -72,6 +76,7 @@ Server1  -> интернет -> публичный WireGuard endpoint каждо
 birdc show bfd sessions
 tcpdump -ni wg-exit -vvv udp port 3784
 tcpdump -ni <AWG_IF> -vvv udp port 3784
+tcpdump -ni <AWG_IF> -vvv tcp port 179
 wg show wg-exit
 ```
 
@@ -144,4 +149,4 @@ journalctl -t vpn-exit-monitor -f
 Script Error: missing value(s) of argument(s) value
 ```
 
-Для раннего выхода применяются вложенные `:if ... else={...}`. Начальное состояние запоминается без очистки, затем conntrack очищается только при изменении состояния отслеживаемого маршрута.
+Для раннего выхода применяются вложенные `:if ... else={...}`. Начальное состояние запоминается без очистки, затем conntrack очищается только при изменении состояния динамического BGP-маршрута в таблице `VPN`. В direct mode этот планировщик не создаётся.

@@ -35,6 +35,10 @@ const defaults = {
   "mt-policy-mode": "policy",
   "mt-route-table": "VPN",
   "mt-dst": "0.0.0.0/0",
+  "s1-bgp-as": "65001",
+  "mt-bgp-as": "65010",
+  "mt-bgp-instance": "vpn-bfd",
+  "mt-bgp-connection": "vpn-to-server1",
   "connmark": "CM_VPN",
   "mt-wan-list": "WAN",
   "bfd-interval": "500",
@@ -542,6 +546,20 @@ function parseDirectRouteDestinations(raw) {
   }
 
   return { values, invalid };
+}
+
+function bgpAdvertisedPrefixes(mode, policyDestination, directDestinations) {
+  const requested = mode === "direct" ? directDestinations : [parseCidr(policyDestination).network];
+  // In main, a learned eBGP /0 normally loses to a WAN default with lower
+  // distance. Two /1s preserve full-Internet coverage and let WAN /0 fall back.
+  return [...new Set(requested.flatMap((prefix) => prefix === "0.0.0.0/0"
+    ? (mode === "direct" ? ["0.0.0.0/1", "128.0.0.0/1"] : [prefix])
+    : [prefix]))];
+}
+
+function privateAsn(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && ((n >= 64512 && n <= 65534) || (n >= 4200000000 && n <= 4294967294));
 }
 
 function updateMikrotikMode() {
@@ -1342,6 +1360,13 @@ function validate() {
     add("bad", "Неизвестный режим маршрутизации MikroTik", "Unknown MikroTik routing mode");
   }
 
+  if (!privateAsn(value("s1-bgp-as")) || !privateAsn(value("mt-bgp-as")) || Number(value("s1-bgp-as")) === Number(value("mt-bgp-as"))) {
+    add("bad", "Нужны разные частные AS для Server1 и MikroTik", "Server1 and MikroTik need distinct private AS numbers");
+  }
+  for (const id of ["mt-bgp-instance", "mt-bgp-connection"]) {
+    if (!validNameToken(value(id))) add("bad", id + ": недопустимое имя", id + ": invalid name");
+  }
+
   if (mtPolicyMode === "policy") {
     if (!parseCidr(value("mt-dst"))) add("bad", "MikroTik dst-address должен быть IPv4/CIDR", "MikroTik dst-address must be IPv4/CIDR");
     else add("good", "MikroTik dst-address корректен", "MikroTik dst-address is valid");
@@ -1542,6 +1567,11 @@ function generateFiles() {
   const mtWanList = value("mt-wan-list");
   const mtAddressLists = value("mt-address-lists").split(",").map((x) => x.trim()).filter(Boolean);
   const mtDirectRoutes = parseDirectRouteDestinations(value("mt-direct-routes")).values;
+  const mtBgpPrefixes = bgpAdvertisedPrefixes(mtPolicyMode, mtDst, mtDirectRoutes);
+  const s1BgpAs = Number(value("s1-bgp-as"));
+  const mtBgpAs = Number(value("mt-bgp-as"));
+  const mtBgpInstance = value("mt-bgp-instance");
+  const mtBgpConnection = value("mt-bgp-connection");
   const bfd = value("bfd-interval");
   const mult = value("bfd-multiplier");
 
@@ -1588,7 +1618,6 @@ function generateFiles() {
         : "")
     : "";
 
-  const routingTableClause = mtTable && mtTable !== "main" ? " routing-table=" + qRouter(mtTable) : "";
   const routingTableEnsure = mtTable && mtTable !== "main"
     ? ":if ([:len [/routing table find where name=" + qRouter(mtTable) + "]] = 0) do={ /routing table add fib name=" + qRouter(mtTable) + " }\n\n"
     : "";
@@ -1851,7 +1880,8 @@ protocol kernel ${kernelName} {
   files["server1/bird.conf"] =
 `router id ${s1Ip};
 
-${birdTables}
+${birdTables}ipv4 table mt_advertised;
+
 protocol device {
 }
 
@@ -1865,7 +1895,26 @@ ${birdBfdExits}    interface "${awgIf}" {
     neighbor ${awgMt} dev "${awgIf}" local ${awgServer};
 }
 
-${birdExitProtocols}`;
+${birdExitProtocols}# These announcements describe Server1 tunnel reachability, not Server2 status.
+# No kernel protocol exports mt_advertised into Server1's routing tables.
+protocol static mt_export {
+    ipv4 { table mt_advertised; };
+${mtBgpPrefixes.map((prefix) => "    route " + prefix + " reject;").join("\n")}
+}
+
+protocol bgp bgp_mt {
+    local ${awgServer} as ${s1BgpAs};
+    neighbor ${awgMt} as ${mtBgpAs};
+    interface "${awgIf}";
+    bfd on;
+    ipv4 {
+        table mt_advertised;
+        import none;
+        export all;
+        next hop self;
+    };
+}
+`;
   files["server2/bird.conf"] =
 `router id ${s2Ip};
 
@@ -2028,6 +2077,17 @@ WantedBy=multi-user.target
     " -p udp -s " + awgMt + "/32 -d " + awgServer +
     "/32 --dport 3784 -m comment --comment vpn-failover-bfd -j ACCEPT 2>/dev/null || true\'" + server1BfdInputStop;
 
+  // Either peer may initiate BGP TCP/179. Keep it scoped to the AWG link.
+  server1BfdInputStart += "\nExecStart=/bin/sh -c '/usr/sbin/iptables -C INPUT -i " + awgIf +
+    " -p tcp -s " + awgMt + "/32 -d " + awgServer +
+    "/32 --dport 179 -m comment --comment vpn-failover-bgp -j ACCEPT 2>/dev/null || /usr/sbin/iptables -I INPUT 1 -i " + awgIf +
+    " -p tcp -s " + awgMt + "/32 -d " + awgServer +
+    "/32 --dport 179 -m comment --comment vpn-failover-bgp -j ACCEPT'";
+  server1BfdInputStop =
+    "\nExecStop=/bin/sh -c '/usr/sbin/iptables -D INPUT -i " + awgIf +
+    " -p tcp -s " + awgMt + "/32 -d " + awgServer +
+    "/32 --dport 179 -m comment --comment vpn-failover-bgp -j ACCEPT 2>/dev/null || true'" + server1BfdInputStop;
+
   exits.forEach((exit) => {
     server1BfdInputStart += "\nExecStart=/bin/sh -c \'/usr/sbin/iptables -C INPUT -i " + exit.s1Interface +
       " -p udp -s " + exit.s2Ip + "/32 -d " + exit.s1Ip +
@@ -2134,6 +2194,10 @@ WantedBy=multi-user.target
 `# Generated by mikrotik-bfd-vpn-failover local configurator
 # Review existing RouterOS objects before import.
 
+# Remove only routes created by the previous unsupported static-BFD generator.
+/ip route remove [find where comment="VPN_BFD_PRIMARY"]
+/ip route remove [find where comment="VPN_BFD_DIRECT"]
+
 /ip address
 add address=${awgMt}/32 network=${awgServer} interface=${qRouter(mtIf)} comment="AWG BFD point-to-point"
 
@@ -2151,55 +2215,68 @@ add address=${awgMt}/32 network=${awgServer} interface=${qRouter(mtIf)} comment=
 /routing bfd configuration
 add interfaces=${qRouter(mtIf)} addresses=${awgServer}/32 min-rx=${bfd}ms min-tx=${bfd}ms multiplier=${mult}
 
+# BGP is the client of BFD on this link. Both peers can initiate TCP/179.
+:if ([:len [/ip firewall filter find where comment="VPN_BGP_INPUT"]] = 0) do={
+    :local inputDrop [/ip firewall filter find where chain=input action=drop]
+    :if ([:len $inputDrop] > 0) do={
+        /ip firewall filter add action=accept chain=input protocol=tcp dst-port=179 src-address=${awgServer}/32 dst-address=${awgMt}/32 in-interface=${qRouter(mtIf)} comment="VPN_BGP_INPUT" place-before=($inputDrop->0)
+    } else={
+        /ip firewall filter add action=accept chain=input protocol=tcp dst-port=179 src-address=${awgServer}/32 dst-address=${awgMt}/32 in-interface=${qRouter(mtIf)} comment="VPN_BGP_INPUT"
+    }
+}
+
+${mtPolicyMode === "policy" ? routingTableEnsure : ""}# Replace only this generator's BGP filters on re-import.
+/routing filter rule remove [find where comment="VPN_BGP_IN"]
+/routing filter rule remove [find where comment="VPN_BGP_OUT"]
+/routing filter rule
+${mtBgpPrefixes.map((prefix) => "add chain=" + qRouter(mtBgpInstance + "-in") + " rule=" + qRouter("if (dst == " + prefix + ") { accept }") + " comment=\"VPN_BGP_IN\"").join("\n")}
+add chain=${qRouter(mtBgpInstance + "-in")} rule="reject" comment="VPN_BGP_IN"
+add chain=${qRouter(mtBgpInstance + "-out")} rule="reject" comment="VPN_BGP_OUT"
+
+:if ([:len [/routing bgp instance find where name=${qRouter(mtBgpInstance)}]] = 0) do={
+    /routing bgp instance add name=${qRouter(mtBgpInstance)} as=${mtBgpAs} router-id=${awgMt} routing-table=${qRouter(mtPolicyMode === "policy" ? mtTable : "main")}
+} else={
+    /routing bgp instance set [find where name=${qRouter(mtBgpInstance)}] as=${mtBgpAs} router-id=${awgMt} routing-table=${qRouter(mtPolicyMode === "policy" ? mtTable : "main")}
+}
+:if ([:len [/routing bgp connection find where name=${qRouter(mtBgpConnection)}]] = 0) do={
+    /routing bgp connection add name=${qRouter(mtBgpConnection)} instance=${qRouter(mtBgpInstance)} remote.address=${awgServer} remote.as=${s1BgpAs} local.address=${awgMt} local.role=ebgp connect=yes listen=yes use-bfd=yes input.filter=${qRouter(mtBgpInstance + "-in")} output.filter-chain=${qRouter(mtBgpInstance + "-out")}
+} else={
+    /routing bgp connection set [find where name=${qRouter(mtBgpConnection)}] instance=${qRouter(mtBgpInstance)} remote.address=${awgServer} remote.as=${s1BgpAs} local.address=${awgMt} local.role=ebgp connect=yes listen=yes use-bfd=yes input.filter=${qRouter(mtBgpInstance + "-in")} output.filter-chain=${qRouter(mtBgpInstance + "-out")}
+}
+
 `;
 
   if (mtPolicyMode === "direct") {
-    let directRouteBlock = "/ip route\n";
-    for (const destination of mtDirectRoutes) {
-      directRouteBlock += "add check-gateway=bfd comment=" + qRouter("VPN_BFD_DIRECT") +
-        " disabled=no distance=1 dst-address=" + destination +
-        " gateway=" + qRouter(awgServer + "%" + mtIf) +
-        " routing-table=main scope=30 target-scope=10\n";
-    }
-
     files["mikrotik/bfd-failover.rsc"] = mikrotikBase +
-`# Direct-route mode:
-# - no mangle rules;
-# - no connection marks;
-# - no selective MikroTik conntrack cleanup.
-# When BFD is DOWN these routes become inactive and RouterOS falls back
-# to other matching routes in main, normally the regular Internet default.
-
-/ip route
-` + directRouteBlock.replace("/ip route\n", "");
+`# Direct mode: BGP installs only the requested destinations in main.
+# A requested /0 is advertised as two /1s to beat the WAN default.
+# No mangle or selective MikroTik conntrack cleanup.
+/system scheduler remove [find where name="VPN-BFD-Watch"]
+/system script remove [find where name="VPN-BFD-Conntrack"]
+`;
   } else {
     files["mikrotik/bfd-failover.rsc"] = mikrotikBase +
-`${routingTableEnsure}/ip route
-add check-gateway=bfd comment="VPN_BFD_PRIMARY" disabled=no distance=1 dst-address=${mtDst} gateway=${qRouter(awgServer + "%" + mtIf)}${routingTableClause} scope=30 target-scope=10
-
+`# Policy mode: the BGP prefix exists only while the AWG/BFD session is alive.
+# Existing WAN defaults inside the VPN table must be removed during migration.
+/system scheduler remove [find where name="VPN-BFD-Watch"]
+/system script remove [find where name="VPN-BFD-Conntrack"]
 /system script
 add name=VPN-BFD-Conntrack policy=read,write,test source={
     :global vpnBfdLastState
 
-    :local routeIds [/ip route find where comment="VPN_BFD_PRIMARY"]
-    :if ([:len $routeIds] = 0) do={
-        :log warning "VPN-BFD: monitored route not found"
-    } else={
-        :local routeId [:pick $routeIds 0]
-        :local routeActive [/ip route get $routeId active]
-        :local currentState "DOWN"
-        :if ($routeActive = true) do={ :set currentState "UP" }
+    :local routeIds [/ip route find where routing-table=${qRouter(mtTable)} dst-address=${parseCidr(mtDst).network} gateway=${awgServer} active=yes dynamic=yes]
+    :local currentState "DOWN"
+    :if ([:len $routeIds] > 0) do={ :set currentState "UP" }
 
-        :if ([:typeof $vpnBfdLastState] = "nothing") do={
+    :if ([:typeof $vpnBfdLastState] = "nothing") do={
+        :set vpnBfdLastState $currentState
+        :log info ("VPN-BFD: initial state = " . $currentState)
+    } else={
+        :if ($currentState != $vpnBfdLastState) do={
+            :local connCount [:len [/ip firewall connection find where connection-mark=${qRouter(connmark)}]]
+            :log warning ("VPN-BFD: state changed " . $vpnBfdLastState . " -> " . $currentState . ", removing " . $connCount . " connections")
+            /ip firewall connection remove [find where connection-mark=${qRouter(connmark)}]
             :set vpnBfdLastState $currentState
-            :log info ("VPN-BFD: initial state = " . $currentState)
-        } else={
-            :if ($currentState != $vpnBfdLastState) do={
-                :local connCount [:len [/ip firewall connection find where connection-mark=${qRouter(connmark)}]]
-                :log warning ("VPN-BFD: state changed " . $vpnBfdLastState . " -> " . $currentState . ", removing " . $connCount . " connections")
-                /ip firewall connection remove [find where connection-mark=${qRouter(connmark)}]
-                :set vpnBfdLastState $currentState
-            }
         }
     }
 }
@@ -2210,15 +2287,11 @@ ${mikrotikPolicyBlock}`;
   }
 
   const mtModeInstallRu = mtPolicyMode === "direct"
-    ? "Режим MikroTik: прямые маршруты в main. Mangle/connection-mark и selective conntrack cleanup на MikroTik не создаются."
-    : dedicatedMtTable
-      ? "Режим MikroTik: address-list + mangle + отдельная routing table. Routing mark совпадает с именем таблицы. При BFD DOWN lookup этой таблицы не находит маршрут, explicit routing rule делает fallback в main. Fasttrack ограничивается соединениями без connection-mark."
-      : "Режим MikroTik: address-list + mangle, BFD-маршрут в main. Неактивный маршрут освобождает обычный default. Selective conntrack cleanup по connection-mark сохраняется.";
+    ? "Режим MikroTik: BGP-префиксы в main. При 0.0.0.0/0 анонсируются два /1. Mangle/connection-mark и выборочная очистка conntrack не создаются."
+    : "Режим MikroTik: address-list + mangle + отдельная таблица " + mtTable + ". BGP анонсирует " + parseCidr(mtDst).network + " только пока AWG/BFD работает; при отзыве маршрута правило VPN_BFD_FALLBACK ищет в main. Fasttrack ограничен соединениями без метки.";
   const mtModeInstallEn = mtPolicyMode === "direct"
-    ? "MikroTik mode: direct routes in main. No mangle/connection-mark or selective MikroTik conntrack cleanup is generated."
-    : dedicatedMtTable
-      ? "MikroTik mode: address-list + mangle + dedicated routing table. The routing mark is the table name. When BFD is DOWN, that lookup fails and an explicit routing rule falls back to main. Fasttrack is limited to connections without a connection-mark."
-      : "MikroTik mode: address-list + mangle, with the BFD route in main. An inactive route leaves the regular default in place. Selective conntrack cleanup by connection-mark is preserved.";
+    ? "MikroTik mode: BGP prefixes in main. A requested 0.0.0.0/0 is advertised as two /1s. No mangle, connection marks, or selective conntrack cleanup."
+    : "MikroTik mode: address-list + mangle in dedicated table " + mtTable + ". BGP advertises " + parseCidr(mtDst).network + " while AWG/BFD is alive; VPN_BFD_FALLBACK uses main when the prefix is withdrawn. Fasttrack is limited to unmarked connections.";
 
   const wgInInstallRu = hasWgInConfig
     ? "\n   server1/wg-in.conf                   -> /etc/wireguard/" + wgInIf + ".conf"
@@ -2345,7 +2418,7 @@ ${server1ExitChmodRu}${hasWgInConfig ? "\n   chmod 600 /etc/wireguard/" + wgInIf
 ${sourceMode === "generate" ? "   systemctl enable --now awg-quick@" + awgIf + "\n" : ""}${server1ExitStartRu}${wgInStartRu}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
-   # unit явно открывает INPUT: AWG UDP/${awgPort}, ${hasWgInConfig ? "wg-in UDP/" + wgInPort + ", " : ""}BFD UDP/3784
+   # unit явно открывает INPUT: AWG UDP/${awgPort}, ${hasWgInConfig ? "wg-in UDP/" + wgInPort + ", " : ""}BFD UDP/3784 и BGP TCP/179
    systemctl enable bird
    systemctl restart bird
    systemctl enable --now vpn-exit-monitor.service
@@ -2354,6 +2427,7 @@ ${sourceMode === "generate" ? "   systemctl enable --now awg-quick@" + awgIf + "
 --------
 Server1:
    birdc show bfd sessions
+   birdc show protocols bgp_mt
    ip rule
 ${exitTableCheckRu}
    journalctl -t vpn-exit-monitor -f
@@ -2370,6 +2444,11 @@ Failover test:
 MIKROTIK
 --------
 ${mtModeInstallRu}
+RouterOS 7.20+; отдельные частные AS: Server1 ${s1BgpAs}, MikroTik ${mtBgpAs}.
+Сначала установите Server1 BIRD и разрешение TCP/179, затем импортируйте .rsc.
+Скрипт удаляет только прежние маршруты с комментариями VPN_BFD_PRIMARY/VPN_BFD_DIRECT.
+${mtPolicyMode === "policy" ? "Проверьте, что в таблице " + mtTable + " нет старого резервного WAN default.\n" : ""}Проверьте, что имена BGP instance/connection не заняты другими настройками.
+После импорта: /routing bgp session print detail; /routing bfd session print detail; /ip route print detail.
 Проверьте mikrotik/bfd-failover.rsc перед импортом.
 Не создавайте дубликаты уже существующих адресов, BFD-конфигураций или маршрутов.
 `
@@ -2413,7 +2492,7 @@ ${server1ExitChmodRu}${hasWgInConfig ? "\n   chmod 600 /etc/wireguard/" + wgInIf
 ${sourceMode === "generate" ? "   systemctl enable --now awg-quick@" + awgIf + "\n" : ""}${server1ExitStartRu}${wgInStartEn}
    systemctl enable --now awg-policy-routing.service
    systemctl enable --now vpn-failover-firewall.service
-   # unit explicitly permits INPUT: AWG UDP/${awgPort}, ${hasWgInConfig ? "wg-in UDP/" + wgInPort + ", " : ""}BFD UDP/3784
+   # unit explicitly permits INPUT: AWG UDP/${awgPort}, ${hasWgInConfig ? "wg-in UDP/" + wgInPort + ", " : ""}BFD UDP/3784 and BGP TCP/179
    systemctl enable bird
    systemctl restart bird
    systemctl enable --now vpn-exit-monitor.service
@@ -2421,6 +2500,7 @@ ${sourceMode === "generate" ? "   systemctl enable --now awg-quick@" + awgIf + "
 CHECK
 -----
    birdc show bfd sessions
+   birdc show protocols bgp_mt
    ip rule
    ip route show table ${table}
    journalctl -t vpn-exit-monitor -f
@@ -2433,6 +2513,11 @@ Failover test:
 MIKROTIK
 --------
 ${mtModeInstallEn}
+RouterOS 7.20+; distinct private ASNs: Server1 ${s1BgpAs}, MikroTik ${mtBgpAs}.
+Install Server1 BIRD and permit TCP/179 before importing the RouterOS script.
+The script removes only old routes commented VPN_BFD_PRIMARY/VPN_BFD_DIRECT.
+${mtPolicyMode === "policy" ? "Verify there is no old WAN backup default in table " + mtTable + ".\n" : ""}Verify no unrelated object uses the selected BGP names.
+After import: /routing bgp session print detail; /routing bfd session print detail; /ip route print detail.
 Review mikrotik/bfd-failover.rsc before import.
 Do not duplicate existing addresses, BFD configuration entries, or routes.
 `;

@@ -31,6 +31,10 @@
 | `<AWG_DISABLE_COOKIES>` | Переключатель AWG 3.1, обычно `on` |
 | `<MT_AWG_IF>` | Совместимый с AmneziaWG/WireGuard интерфейс MikroTik |
 | `<MT_ROUTE_TABLE>` | Отдельная таблица RouterOS для policy mode, отличная от `main` |
+| `<SERVER1_BGP_AS>` | Частный AS Server1, по умолчанию `65001` |
+| `<MT_BGP_AS>` | Другой частный AS MikroTik, по умолчанию `65010` |
+| `<MT_BGP_INSTANCE>` | Имя BGP instance MikroTik, по умолчанию `vpn-bfd` |
+| `<MT_BGP_CONNECTION>` | Имя BGP connection к Server1, по умолчанию `vpn-to-server1` |
 | `<DST_ADDRESS_LIST>` | Существующий `dst-address-list` RouterOS, выбирающий VPN-путь |
 | `<WAN_INTERFACE_LIST>` | Список WAN-интерфейсов RouterOS, исключённых из маркировки |
 | `<WG_EXIT_IF>` | Выходной WireGuard-интерфейс Server1, например `wg-exit`, `wg-exit2` |

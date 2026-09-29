@@ -36,7 +36,7 @@ On every **UP → DOWN** and **DOWN → UP** transition, only VPN-client conntra
 - automatic failback to the most preferred available Server2;
 - event-driven Linux conntrack cleanup from Netlink route events;
 - BFD between MikroTik and Server1 inside AmneziaWG;
-- MikroTik `check-gateway=bfd`;
+- BGP `use-bfd=yes` between MikroTik and Server1 instead of static-route BFD;
 - cleanup only for connections marked `CM_VPN` when route state changes;
 - persistence across Server1/Server2 reboots.
 
@@ -58,8 +58,8 @@ It can:
 - generate ready-to-use Server1, Server2 and MikroTik configurations;
 - generate an optional `server1/wg-in.conf` with its own `PostUp`/`PreDown` policy-routing and FORWARD lifecycle hooks;
 - generate BIRD/BFD, Linux policy routing, systemd units, persistent Server1 FORWARD/fallback NAT, required BFD INPUT rules, and event-driven conntrack cleanup;
-- generate MikroTik `check-gateway=bfd` and selective `CM_VPN` cleanup;
-- choose between a dedicated RouterOS table with `dst-address-list`/mangle policy routing or direct static routes in `main` without marking;
+- generate MikroTik BGP/BFD and selective `CM_VPN` cleanup;
+- choose a dedicated RouterOS table with `dst-address-list`/mangle or direct BGP prefixes in `main` without marking;
 - download individual files or the complete generated set as a `.tar`;
 - keep source-specific Server2 NAT/forwarding in `wg-exit.conf` and Server1 fallback NAT in a dedicated systemd unit.
 
@@ -93,8 +93,8 @@ Russian: [Несколько Server2 и приоритетный failover](docs/
 
 The configurator supports two modes:
 
-1. **Address-list + mangle.** It creates `mark-connection`, `mark-routing`, a dedicated routing table, and a BFD-monitored route. In RouterOS v7 `new-routing-mark` must reference an existing routing table, so the routing mark is the table name (for example `VPN`). If the BFD route in that table is inactive, the mangle lookup fails and processing continues; an explicit `/routing rule action=lookup table=main` makes fallback to `main` explicit. The `mark-routing` rule excludes the incoming AWG interface: reply packets retain `CM_VPN` and must not be routed back into the tunnel. Catch-all fasttrack rules are limited to `connection-mark=no-mark` so `CM_VPN` traffic continues through mangle. Selective conntrack cleanup by `connection-mark` remains available.
-2. **Direct routes.** The user supplies IPv4/CIDR destinations and the configurator creates ordinary static routes in `main` through the AWG gateway with `check-gateway=bfd`. No mangle or connection marks are generated. When BFD goes DOWN the routes become inactive and RouterOS uses other matching routes, normally the regular default route.
+1. **Address-list + mangle.** It creates connection/routing marks and a dedicated table receiving the configured prefix from Server1 via BGP. If BFD detects loss of MikroTik ↔ Server1 reachability, BGP withdraws the route and an explicit `/routing rule action=lookup table=main` provides fallback. Reply packets arriving over AWG are excluded from re-marking; catch-all fasttrack applies only to unmarked connections. Selective `CM_VPN` cleanup remains.
+2. **Direct routes.** Server1 advertises the selected IPv4/CIDR prefixes into `main` through BGP, without mangle or connection marks. Loss of BFD withdraws them. Requested `0.0.0.0/0` expands to two `/1` prefixes that take precedence over the regular WAN `/0` while the tunnel is alive.
 
 Selective MikroTik conntrack cleanup is intentionally omitted in direct-route mode because there is no connection mark.
 
@@ -141,7 +141,7 @@ BFD may run inside the tunnel between MikroTik and Server1. For a point-to-point
 add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF>
 ```
 
-This allows correct single-hop BFD source selection and `check-gateway=bfd`.
+This allows correct single-hop BFD source selection for BGP `use-bfd=yes`.
 
 ### 2. Server1 selects a dedicated routing table
 
@@ -251,7 +251,7 @@ When Server2 returns:
 
 ### 7. MikroTik also clears stale sessions
 
-MikroTik watches the BFD-monitored route to Server1. A stateful script remembers the previous route state and on `UP ↔ DOWN` transitions runs:
+MikroTik receives the Server1 route over BGP with `use-bfd=yes`. A script watches the active dynamic route in `VPN` and on `UP ↔ DOWN` transitions runs:
 
 ```routeros
 /ip firewall connection remove [find where connection-mark="CM_VPN"]
@@ -274,9 +274,9 @@ The generator creates narrow source/destination/interface rules rather than open
 
 ### RouterOS: why routing-mark does not blackhole
 
-In policy mode the generator creates a dedicated FIB table, for example `VPN`, and mangle sets `new-routing-mark=VPN`. That table contains only the BFD-controlled default through Server1.
+In policy mode the generator creates a dedicated FIB table, for example `VPN`, and mangle sets `new-routing-mark=VPN`. Server1 advertises the selected prefix via BGP independently of Server2 state.
 
-When BFD goes DOWN, that default becomes inactive. According to the current RouterOS routing-decision documentation, a failed mangle-table lookup is not a terminal blackhole: with the default `mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main` order, processing continues. The generator also creates an explicit fallback:
+When BFD goes DOWN, BGP withdraws the prefix. With the default `mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main` order, processing continues. The generator also creates an explicit fallback:
 
 ```routeros
 /routing rule
@@ -304,7 +304,7 @@ BFD is the primary liveness mechanism because it:
 - monitors the exact tunnel peer of interest;
 - independently monitors every `wg-exit*` when multiple Server2 nodes are configured;
 - integrates directly with BIRD on Linux;
-- can be used by MikroTik with `check-gateway=bfd`.
+- is used by BGP `use-bfd=yes` to monitor MikroTik ↔ Server1 reachability.
 
 A separate Netwatch, recursive default through a public probe host, or ping watchdog is not required for **this topology**.
 
