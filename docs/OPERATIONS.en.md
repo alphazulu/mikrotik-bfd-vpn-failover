@@ -190,3 +190,5 @@ Script Error: missing value(s) of argument(s) value
 ```
 
 The watcher therefore uses nested `:if ... else={...}` blocks for early-exit logic instead of `:return`. Initial state is recorded without flushing conntrack. Each run looks for the active BGP route for the selected prefix in table `VPN`; its arrival or withdrawal flushes only `CM_VPN` connections. Other routes in that table and the gateway's display format do not affect this check. Direct mode does not create this scheduler.
+
+After import, the `.rsc` runs the script once to sample the initial state. The scheduler's `interval=1s` then checks on the running router without a reboot; RouterOS assigns the start time when the entry is added.

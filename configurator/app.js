@@ -2282,8 +2282,11 @@ add name=VPN-BFD-Conntrack policy=read,write,test source={
 }
 
 /system scheduler
-add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack start-time=startup
-${mikrotikPolicyBlock}`;
+add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack
+${mikrotikPolicyBlock}
+# Sample immediately after import; the scheduler keeps checking every second.
+/system script run VPN-BFD-Conntrack
+`;
   }
 
   const mtModeInstallRu = mtPolicyMode === "direct"

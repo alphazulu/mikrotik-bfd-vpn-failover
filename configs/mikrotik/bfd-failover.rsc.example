@@ -77,4 +77,5 @@ add name=VPN-BFD-Conntrack policy=read,write,test source={
     }
 }
 /system scheduler
-add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack start-time=startup
+add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack
+/system script run VPN-BFD-Conntrack
