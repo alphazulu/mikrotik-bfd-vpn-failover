@@ -190,3 +190,5 @@ Script Error: missing value(s) of argument(s) value
 ```
 
 The watcher therefore uses nested `:if ... else={...}` blocks for early-exit logic instead of `:return`. Initial state is recorded without flushing conntrack. Each run looks for the active BGP route for the selected prefix in table `VPN`; its arrival or withdrawal flushes only `CM_VPN` connections. Other routes in that table and the gateway's display format do not affect this check. Direct mode does not create this scheduler.
+
+`start-time=startup` does not run after import on an already running router until the next reboot. The generator adds two seconds to the current clock, carrying the minute, hour, and midnight, and runs `VPN-BFD-Conntrack` once from the `.rsc`. That first pass usually only records `DOWN` or `UP`. Re-import updates the `/routing bfd configuration` entry with `comment="VPN_BFD"` instead of adding another one.

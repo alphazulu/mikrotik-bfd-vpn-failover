@@ -306,6 +306,11 @@ assert.match(files["mikrotik/bfd-failover.rsc"], /:local routeIds \[\/routing ro
 assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /:local routeIds \[[^\n]*gateway=/, "Monitoring must not depend on how RouterOS renders the BGP next hop");
 assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /monitored route not found/, "Missing dynamic route is a normal DOWN state");
 assert.match(files["mikrotik/bfd-failover.rsc"], /:if \(\[:typeof \$vpnBfdLastState\] = "nothing"\) do=\{[\s\S]*?:set vpnBfdLastState \$currentState[\s\S]*?\} else=\{/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /comment="VPN_BFD"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /\/routing bfd configuration find where comment="VPN_BFD"/);
+assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /start-time=startup/, "A startup scheduler does not run after import on a live router");
+assert.match(files["mikrotik/bfd-failover.rsc"], /\/system script run VPN-BFD-Conntrack/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /start-time=\$start/);
 {
   const rsc = files["mikrotik/bfd-failover.rsc"];
   const tableNames = new Set(["main"]);
@@ -446,6 +451,8 @@ assert.match(api.state.generated["server1/bird.conf"], /route 198\.51\.100\.0\/2
 assert.doesNotMatch(directMikrotik, /\/ip firewall mangle/);
 assert.doesNotMatch(directMikrotik, /mark-connection/);
 assert.doesNotMatch(directMikrotik, /add name=VPN-BFD-Conntrack/);
+assert.doesNotMatch(directMikrotik, /\/system script run VPN-BFD-Conntrack/);
+assert.match(directMikrotik, /comment="VPN_BFD"/);
 assert.doesNotMatch(directMikrotik, /VPN_BFD_FALLBACK/);
 assert.doesNotMatch(directMikrotik, /fasttrack-connection/);
 assert.doesNotMatch(directMikrotik, /\/routing table add/);
