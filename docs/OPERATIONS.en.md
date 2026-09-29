@@ -33,7 +33,7 @@ iptables -t nat -S POSTROUTING
 ```routeros
 /routing bfd session print detail
 /routing bgp session print detail
-/ip route print detail where routing-table=VPN
+/routing route print detail where routing-table=VPN bgp=yes
 ```
 
 ## Expected route events on Server1
@@ -189,4 +189,4 @@ On RouterOS 7.24.x, `:return` requires a value. A bare `:return` in a scheduler-
 Script Error: missing value(s) of argument(s) value
 ```
 
-The watcher therefore uses nested `:if ... else={...}` blocks for early-exit logic instead of `:return`. Initial state is recorded without flushing conntrack, and later runs flush only when the dynamic BGP route in table `VPN` changes state. Direct mode does not create this scheduler.
+The watcher therefore uses nested `:if ... else={...}` blocks for early-exit logic instead of `:return`. Initial state is recorded without flushing conntrack. Each run looks for the active BGP route for the selected prefix in table `VPN`; its arrival or withdrawal flushes only `CM_VPN` connections. Other routes in that table and the gateway's display format do not affect this check. Direct mode does not create this scheduler.
