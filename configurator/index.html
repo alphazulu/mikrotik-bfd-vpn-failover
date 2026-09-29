@@ -252,11 +252,15 @@
         <label data-ru="Режим маршрутизации MikroTik" data-en="MikroTik routing mode">Режим маршрутизации MikroTik
           <select id="mt-policy-mode">
             <option value="policy" data-ru="Address-list + mangle + отдельная routing table" data-en="Address-list + mangle + dedicated routing table">Address-list + mangle + отдельная routing table</option>
-            <option value="direct" data-ru="Прямые статические маршруты в main, без маркировки" data-en="Direct static routes in main, no marking">Прямые статические маршруты в main, без маркировки</option>
+            <option value="direct" data-ru="Прямые маршруты BGP в main, без маркировки" data-en="Direct BGP routes in main, no marking">Прямые маршруты BGP в main, без маркировки</option>
           </select>
         </label>
         <label>BFD interval, ms<input id="bfd-interval" type="number" min="50" value="500"></label>
         <label>BFD multiplier<input id="bfd-multiplier" type="number" min="2" max="50" value="3"></label>
+        <label data-ru="AS Server1 (частная)" data-en="Server1 AS (private)">AS Server1 (частная)<input id="s1-bgp-as" type="number" value="65001"></label>
+        <label data-ru="AS MikroTik (частная)" data-en="MikroTik AS (private)">AS MikroTik (частная)<input id="mt-bgp-as" type="number" value="65010"></label>
+        <label data-ru="Имя BGP instance MikroTik" data-en="MikroTik BGP instance name">Имя BGP instance MikroTik<input id="mt-bgp-instance" type="text" value="vpn-bfd"></label>
+        <label data-ru="Имя BGP connection MikroTik" data-en="MikroTik BGP connection name">Имя BGP connection MikroTik<input id="mt-bgp-connection" type="text" value="vpn-to-server1"></label>
       </div>
 
       <div id="mt-policy-fields" class="grid form-grid">
@@ -271,7 +275,7 @@
         <label data-ru="Назначения для прямых маршрутов (IP/CIDR, через запятую или пробел)" data-en="Direct route destinations (IP/CIDR, comma or whitespace separated)">Назначения для прямых маршрутов (IP/CIDR, через запятую или пробел)
           <textarea id="mt-direct-routes" rows="5" spellcheck="false" data-placeholder-ru="203.0.113.10, 198.51.100.0/24" data-placeholder-en="203.0.113.10, 198.51.100.0/24" placeholder="203.0.113.10, 198.51.100.0/24"></textarea>
         </label>
-        <div class="hint" data-ru="В этом режиме правила mangle и connection-mark не создаются. Маршруты добавляются в main с check-gateway=bfd; при падении BFD обычный default route снова становится доступным." data-en="In this mode no mangle or connection-mark rules are generated. Routes are added to main with check-gateway=bfd; when BFD goes down, the normal default route becomes usable again.">В этом режиме правила mangle и connection-mark не создаются. Маршруты добавляются в main с check-gateway=bfd; при падении BFD обычный default route снова становится доступным.</div>
+        <div class="hint" data-ru="В этом режиме mangle и connection-mark не создаются. BGP устанавливает префиксы в main и снимает их при потере BFD. 0.0.0.0/0 разворачивается в два /1, чтобы сохранить обычный WAN default как резерв." data-en="This mode creates no mangle or connection marks. BGP installs prefixes in main and withdraws them when BFD goes down. 0.0.0.0/0 expands to two /1 routes, preserving the regular WAN default as fallback.">В этом режиме mangle и connection-mark не создаются. BGP устанавливает префиксы в main и снимает их при потере BFD. 0.0.0.0/0 разворачивается в два /1, чтобы сохранить обычный WAN default как резерв.</div>
       </div>
 
       <div class="actions">

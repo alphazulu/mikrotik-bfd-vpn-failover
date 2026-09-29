@@ -158,6 +158,10 @@ const values = {
   "route-table": "200",
   "mt-route-table": "VPN",
   "mt-dst": "0.0.0.0/0",
+  "s1-bgp-as": "65001",
+  "mt-bgp-as": "65010",
+  "mt-bgp-instance": "vpn-bfd",
+  "mt-bgp-connection": "vpn-to-server1",
   "connmark": "CM_VPN",
   "mt-address-lists": "policy-list-a, policy-list-b, policy-list-c",
   "mt-wan-list": "WAN",
@@ -226,6 +230,11 @@ assert.match(files["server1/wg-exit.conf"], new RegExp("PresharedKey = " + keyC.
 assert.match(files["server1/bird.conf"], /kernel table 200;/);
 assert.match(files["server1/bird.conf"], /neighbor 10.77.66.2 dev "wg-exit" local 10.77.66.1;/);
 assert.match(files["server1/bird.conf"], /route 0\.0\.0\.0\/0 via 10.77.66.2 bfd;/);
+assert.match(files["server1/bird.conf"], /ipv4 table mt_advertised;/);
+assert.match(files["server1/bird.conf"], /protocol static mt_export[\s\S]*?route 0\.0\.0\.0\/0 reject;/);
+assert.match(files["server1/bird.conf"], /protocol bgp bgp_mt[\s\S]*?local 10\.88\.99\.1 as 65001;[\s\S]*?neighbor 10\.88\.99\.4 as 65010;[\s\S]*?bfd on;/);
+assert.match(files["server1/bird.conf"], /table mt_advertised;[\s\S]*?import none;[\s\S]*?export all;[\s\S]*?next hop self;/);
+assert.doesNotMatch(files["server1/bird.conf"], /protocol kernel [^{]*\{[^}]*mt_advertised/, "BGP announcement must not enter Server1's kernel table");
 assert.doesNotMatch(files["server1/bird.conf"], /route 0\.0\.0\.0\/0 via 10.77.66.2 dev /, "BIRD 2.14 static route must not use dev after an IPv4 nexthop");
 assert.match(files["server1/vpn-exit-monitor.sh"], /TABLES=\(200\)/);
 assert.match(files["server1/vpn-exit-monitor.sh"], /selected_exit\(\)/);
@@ -235,6 +244,7 @@ assert.match(files["server1/vpn-failover-firewall.service"], /-s 10.88.100.0\/24
 assert.match(files["server1/vpn-failover-firewall.service"], /INPUT -i eth0 -p udp --dport 51820 .*vpn-failover-listener/);
 assert.match(files["server1/vpn-failover-firewall.service"], /INPUT -i eth0 -p udp --dport 51999 .*vpn-failover-listener/);
 assert.match(files["server1/vpn-failover-firewall.service"], /INPUT -i awg0 -p udp -s 10\.88\.99\.4\/32 -d 10\.88\.99\.1\/32 --dport 3784 .*vpn-failover-bfd/);
+assert.match(files["server1/vpn-failover-firewall.service"], /INPUT -i awg0 -p tcp -s 10\.88\.99\.4\/32 -d 10\.88\.99\.1\/32 --dport 179 .*vpn-failover-bgp/);
 assert.match(files["server1/vpn-failover-firewall.service"], /INPUT -i wg-exit -p udp -s 10\.77\.66\.2\/32 -d 10\.77\.66\.1\/32 --dport 3784 .*vpn-failover-bfd/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-i awg0 -o awg0 .* -j DROP/);
 assert.match(files["server1/vpn-failover-firewall.service"], /-i awg0 .* -j ACCEPT/);
@@ -257,7 +267,7 @@ assert.match(files["server2/wg-exit.conf"], /INPUT -i eth0 -p udp --dport 51830 
 assert.match(files["server2/wg-exit.conf"], /INPUT -i %i -p udp -s 10\.77\.66\.1\/32 -d 10\.77\.66\.2\/32 --dport 3784 .*wg-exit-bfd/);
 
 assert.match(files["mikrotik/bfd-failover.rsc"], /address=10.88.99.4\/32 network=10.88.99.1/);
-assert.match(files["mikrotik/bfd-failover.rsc"], /check-gateway=bfd/);
+assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /check-gateway=bfd/, "Unsupported static-route BFD must not be generated");
 assert.match(files["mikrotik/bfd-failover.rsc"], /\/routing table/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /name="VPN"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /routing-table="VPN"/);
@@ -277,20 +287,23 @@ assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /routing-table="VPN"[^\n
   const tablePos = rsc.indexOf('/routing table add fib name="VPN"');
   const markPos = rsc.indexOf('new-routing-mark="VPN"');
   assert.ok(tablePos >= 0 && tablePos < markPos, "Custom FIB table must be created before it is referenced by new-routing-mark");
-  const vpnDefaultCount = [...rsc.matchAll(/dst-address=0\.0\.0\.0\/0[^\n]*routing-table="VPN"/g)].length;
-  assert.equal(vpnDefaultCount, 1, "Policy table must contain only the BFD-controlled default route");
+  assert.match(rsc, /\/routing bgp instance add name="vpn-bfd" as=65010 router-id=10\.88\.99\.4 routing-table="VPN"/);
+  assert.match(rsc, /\/routing bgp connection add name="vpn-to-server1" instance="vpn-bfd" remote\.address=10\.88\.99\.1 remote\.as=65001 local\.address=10\.88\.99\.4 local\.role=ebgp connect=yes listen=yes use-bfd=yes input\.filter="vpn-bfd-in" output\.filter-chain="vpn-bfd-out"/);
+  assert.match(rsc, /chain="vpn-bfd-in" rule="if \(dst == 0\.0\.0\.0\/0\) \{ accept \}"/);
+  assert.match(rsc, /chain="vpn-bfd-out" rule="reject"/);
+  assert.match(rsc, /\/ip route remove \[find where comment="VPN_BFD_PRIMARY"\]/);
 }
-assert.match(files["mikrotik/bfd-failover.rsc"], /check-gateway=bfd comment="VPN_BFD_PRIMARY" disabled=no distance=1 dst-address=0\.0\.0\.0\/0 gateway="10\.88\.99\.1%wg-awg-proxy-1" routing-table="VPN" scope=30 target-scope=10/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /action=fasttrack-connection/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /connection-mark=no-mark/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /in-interface-list=!WAN/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /connection-state=new connection-mark=no-mark/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /in-interface-list=!WAN in-interface=!"wg-awg-proxy-1"/, "Return traffic entering the AWG interface must not be policy-routed back into the tunnel");
 assert.match(files["mikrotik/bfd-failover.rsc"], /chain=input protocol=udp dst-port=3784 src-address=10\.88\.99\.1\/32 dst-address=10\.88\.99\.4\/32 in-interface="wg-awg-proxy-1" comment="VPN_BFD_INPUT"/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /chain=input protocol=tcp dst-port=179 src-address=10\.88\.99\.1\/32 dst-address=10\.88\.99\.4\/32 in-interface="wg-awg-proxy-1" comment="VPN_BGP_INPUT"/);
 assert.match(files["mikrotik/bfd-failover.rsc"], /place-before=\(\$inputDrop->0\)/);
 assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /^\s*:return\s*$/m, "RouterOS 7.24.x requires a value for :return; watcher must not emit bare :return");
-assert.match(files["mikrotik/bfd-failover.rsc"], /:local routeIds \[\/ip route find where comment="VPN_BFD_PRIMARY"\]/);
-assert.match(files["mikrotik/bfd-failover.rsc"], /:local routeId \[:pick \$routeIds 0\]/);
+assert.match(files["mikrotik/bfd-failover.rsc"], /:local routeIds \[\/ip route find where routing-table="VPN" dst-address=0\.0\.0\.0\/0 gateway=10\.88\.99\.1 active=yes dynamic=yes\]/);
+assert.doesNotMatch(files["mikrotik/bfd-failover.rsc"], /monitored route not found/, "Missing dynamic route is a normal DOWN state");
 assert.match(files["mikrotik/bfd-failover.rsc"], /:if \(\[:typeof \$vpnBfdLastState\] = "nothing"\) do=\{[\s\S]*?:set vpnBfdLastState \$currentState[\s\S]*?\} else=\{/);
 {
   const rsc = files["mikrotik/bfd-failover.rsc"];
@@ -423,22 +436,55 @@ assert.equal(api.validate().ok, true, "Direct-route topology must validate");
 api.generateFiles();
 
 const directMikrotik = api.state.generated["mikrotik/bfd-failover.rsc"];
-assert.match(directMikrotik, /check-gateway=bfd comment="VPN_BFD_DIRECT" disabled=no distance=1 dst-address=203\.0\.113\.55\/32 .*routing-table=main scope=30 target-scope=10/);
-assert.match(directMikrotik, /check-gateway=bfd comment="VPN_BFD_DIRECT" disabled=no distance=1 dst-address=198\.51\.100\.0\/24 .*routing-table=main scope=30 target-scope=10/);
+assert.doesNotMatch(directMikrotik, /check-gateway=bfd/);
+assert.match(directMikrotik, /routing-table="main"/);
+assert.match(directMikrotik, /chain="vpn-bfd-in" rule="if \(dst == 203\.0\.113\.55\/32\) \{ accept \}"/);
+assert.match(directMikrotik, /chain="vpn-bfd-in" rule="if \(dst == 198\.51\.100\.0\/24\) \{ accept \}"/);
+assert.match(api.state.generated["server1/bird.conf"], /route 203\.0\.113\.55\/32 reject;/);
+assert.match(api.state.generated["server1/bird.conf"], /route 198\.51\.100\.0\/24 reject;/);
 assert.doesNotMatch(directMikrotik, /\/ip firewall mangle/);
 assert.doesNotMatch(directMikrotik, /mark-connection/);
-assert.doesNotMatch(directMikrotik, /VPN-BFD-Conntrack/);
+assert.doesNotMatch(directMikrotik, /add name=VPN-BFD-Conntrack/);
 assert.doesNotMatch(directMikrotik, /VPN_BFD_FALLBACK/);
 assert.doesNotMatch(directMikrotik, /fasttrack-connection/);
 assert.doesNotMatch(directMikrotik, /\/routing table add/);
-assert.doesNotMatch(directMikrotik, /dst-address=0\.0\.0\.0\/0/);
-assert.match(api.state.generated["INSTALL.txt"], /прямые маршруты в main|direct routes in main/i);
+assert.doesNotMatch(directMikrotik, /dst == 0\.0\.0\.0\/0/);
+assert.match(api.state.generated["INSTALL.txt"], /BGP-префиксы в main|BGP prefixes in main/i);
+
+element("mt-direct-routes").value = "0.0.0.0/0";
+assert.equal(api.validate().ok, true, "Full Internet direct mode must validate");
+api.generateFiles();
+assert.match(api.state.generated["server1/bird.conf"], /route 0\.0\.0\.0\/1 reject;/);
+assert.match(api.state.generated["server1/bird.conf"], /route 128\.0\.0\.0\/1 reject;/);
+assert.doesNotMatch(api.state.generated["server1/bird.conf"], /route 0\.0\.0\.0\/0 reject;/,
+  "A BGP default in main would lose to a lower-distance ISP default");
+assert.match(api.state.generated["mikrotik/bfd-failover.rsc"], /dst == 0\.0\.0\.0\/1/);
+assert.match(api.state.generated["mikrotik/bfd-failover.rsc"], /dst == 128\.0\.0\.0\/1/);
 
 element("mt-direct-routes").value = "203.0.113.55, not-an-ip";
 assert.equal(api.validate().ok, false, "Invalid direct-route destination must be rejected");
 element("mt-direct-routes").value = "";
 element("mt-policy-mode").value = "policy";
 assert.equal(api.validate().ok, true, "Policy mode must still validate after direct-mode test");
+
+element("mt-dst").value = "198.51.100.17/24";
+assert.equal(api.validate().ok, true, "Policy mode permits an explicitly selected non-default prefix");
+api.generateFiles();
+assert.match(api.state.generated["server1/bird.conf"], /route 198\.51\.100\.0\/24 reject;/);
+assert.match(api.state.generated["mikrotik/bfd-failover.rsc"], /dst == 198\.51\.100\.0\/24/);
+assert.match(api.state.generated["mikrotik/bfd-failover.rsc"], /routing-table="VPN" dst-address=198\.51\.100\.0\/24 gateway=10\.88\.99\.1 active=yes dynamic=yes/);
+element("mt-dst").value = "0.0.0.0/0";
+
+element("mt-bgp-as").value = "65001";
+assert.equal(api.validate().ok, false, "BGP peers must have distinct ASNs");
+element("mt-bgp-as").value = "65010";
+element("s1-bgp-as").value = "65535";
+assert.equal(api.validate().ok, false, "Reserved/non-private BGP ASNs must be rejected");
+element("s1-bgp-as").value = "65001";
+element("mt-bgp-instance").value = "unsafe;name";
+assert.equal(api.validate().ok, false, "Unsafe BGP instance names must be rejected");
+element("mt-bgp-instance").value = "vpn-bfd";
+assert.equal(api.validate().ok, true);
 
 // Inter-server WG generation is independent from AWG/wg-in import/generation.
 element("config-source-mode").value = "import";

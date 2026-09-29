@@ -9,6 +9,7 @@
 ```bash
 wg show
 birdc show bfd sessions
+birdc show protocols bgp_mt
 ip rule
 ip route show table 200
 # for additional exits:
@@ -31,10 +32,13 @@ iptables -t nat -S POSTROUTING
 
 ```routeros
 /routing bfd session print detail
-/ip route print detail where check-gateway=bfd
+/routing bgp session print detail
+/ip route print detail where routing-table=VPN
 ```
 
 ## Expected route events on Server1
+
+On MikroTik, the advertised prefix appears as a dynamic BGP route in table `VPN`. It disappears when AWG/BFD or the BGP session goes down, and `VPN_BFD_FALLBACK` sends new connections to `main`. In direct mode check `main`; a requested `0.0.0.0/0` is advertised as two `/1` prefixes.
 
 When Server2 disappears:
 
@@ -76,6 +80,7 @@ If a future design introduces a private underlay to Server2, or requires explici
 birdc show bfd sessions
 tcpdump -ni wg-exit -vvv udp port 3784
 tcpdump -ni <AWG_IF> -vvv udp port 3784
+tcpdump -ni <AWG_IF> -vvv tcp port 179
 ```
 
 Single-hop BFD packets should normally use TTL 255.
@@ -184,4 +189,4 @@ On RouterOS 7.24.x, `:return` requires a value. A bare `:return` in a scheduler-
 Script Error: missing value(s) of argument(s) value
 ```
 
-The watcher therefore uses nested `:if ... else={...}` blocks for early-exit logic instead of `:return`. Initial state is recorded without flushing conntrack, and later runs flush only when the monitored route state actually changes.
+The watcher therefore uses nested `:if ... else={...}` blocks for early-exit logic instead of `:return`. Initial state is recorded without flushing conntrack, and later runs flush only when the dynamic BGP route in table `VPN` changes state. Direct mode does not create this scheduler.

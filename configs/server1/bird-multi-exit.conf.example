@@ -7,6 +7,7 @@ router id <WG_EXIT_S1_IP_1>;
 ipv4 table exit4_1;
 ipv4 table exit4_2;
 ipv4 table exit4_3;
+ipv4 table mt_advertised;
 
 protocol device {
 }
@@ -84,5 +85,25 @@ protocol kernel kernel_exit_3 {
         table exit4_3;
         import none;
         export all;
+    };
+}
+
+# Always advertise Server1 tunnel reachability, even when every Server2 is down.
+# This table has no kernel export.
+protocol static mt_export {
+    ipv4 { table mt_advertised; };
+    route 0.0.0.0/0 reject;
+}
+
+protocol bgp bgp_mt {
+    local <AWG_SERVER_IP> as <SERVER1_BGP_AS>;
+    neighbor <AWG_MIKROTIK_IP> as <MT_BGP_AS>;
+    interface "<AWG_IF>";
+    bfd on;
+    ipv4 {
+        table mt_advertised;
+        import none;
+        export all;
+        next hop self;
     };
 }

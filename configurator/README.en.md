@@ -26,10 +26,10 @@ The configurator produces:
 - persistent forwarding/rp_filter sysctl configuration for Server1 and forwarding configuration for every Server2;
 - Server1 BIRD configuration;
 - Server1 policy-routing systemd unit;
-- Server1 firewall unit with explicit INPUT permissions for the AWG UDP listen port, optional wg-in listen port, and BFD UDP/3784 from MikroTik and every Server2 exit;
+- Server1 firewall unit with explicit INPUT permissions for the AWG UDP listen port, optional wg-in listen port, BGP TCP/179 from MikroTik, and BFD UDP/3784 from MikroTik and every Server2 exit;
 - Server1 event-driven conntrack monitor and service;
 - one `wg-exit.conf` and BIRD responder configuration for every Server2, including an explicit WAN-side INPUT rule for its WireGuard UDP listen port and an inner INPUT rule for BFD UDP/3784;
-- MikroTik RouterOS BFD/failover script with a narrow `chain=input` BFD UDP/3784 allow plus either address-list/mangle policy routing or direct destination routes;
+- MikroTik RouterOS BGP + BFD script with narrow `chain=input` TCP/179 and UDP/3784 rules plus either address-list/mangle policy routing or direct BGP destination routes;
 - installation instructions;
 - a local `.tar` bundle containing the complete generated set.
 
@@ -44,10 +44,12 @@ The UI supports Russian and English from one implementation so both interfaces s
 
 The UI offers two mutually exclusive modes:
 
-- **Address-list + mangle** — generates connection marks, a dedicated routing table, and selective conntrack cleanup. The routing mark is the existing table name. When its BFD route is inactive, lookup fails and one explicit `/routing rule` falls back to `main`. Catch-all fasttrack rules are limited to unmarked connections.
-- **Direct routes** — generates BFD-monitored static routes in `main` for the supplied IPv4/CIDR destinations and does not generate mangle/connection marks.
+- **Address-list + mangle** — generates connection marks, a dedicated routing table, and selective conntrack cleanup. The routing mark is the table name. When BGP withdraws the route on BFD failure, one explicit `/routing rule` falls back to `main`. Catch-all fasttrack rules are limited to unmarked connections.
+- **Direct routes** — BGP installs the supplied IPv4/CIDR destinations in `main`. A requested `0.0.0.0/0` becomes two `/1` routes so the tunnel takes precedence over a regular WAN default. No mangle or connection marks are generated.
 
 Direct-route mode deliberately omits selective MikroTik conntrack cleanup because there is no connection mark to target.
+
+Server1 announces prefixes from a separate BIRD table that is never exported to the Linux kernel. BGP requires distinct private ASNs and RouterOS 7.20+. The generator removes only old static routes commented `VPN_BFD_PRIMARY` and `VPN_BFD_DIRECT`; review other routes and existing BGP objects before import.
 
 
 ## Health-check model
@@ -93,6 +95,7 @@ Server firewall generation is deny-by-default-friendly: every UDP service that m
 - Optional Server1 wg-in ListenPort is permitted when a complete wg-in config is generated.
 - Every Server2 wg-exit ListenPort is permitted on that Server2 WAN interface.
 - BFD UDP/3784 is permitted only on the relevant tunnel interface and exact peer/local tunnel addresses.
+- BGP TCP/179 is permitted only between Server1 and MikroTik tunnel addresses on AWG.
 
 Server1 outbound wg-exit interfaces do not require a public listener rule because they initiate the WireGuard transport and do not define a fixed ListenPort in the generated config.
 

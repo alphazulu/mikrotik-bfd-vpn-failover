@@ -31,6 +31,10 @@ Use placeholders in documentation and public repositories. Suggested mapping:
 | `<AWG_DISABLE_COOKIES>` | AWG 3.1 toggle, normally `on` in generated 3.1 profile |
 | `<MT_AWG_IF>` | MikroTik AmneziaWG/WireGuard-compatible interface name |
 | `<MT_ROUTE_TABLE>` | Dedicated RouterOS routing table for policy mode, not `main` |
+| `<SERVER1_BGP_AS>` | Private Server1 AS, default `65001` |
+| `<MT_BGP_AS>` | Distinct private MikroTik AS, default `65010` |
+| `<MT_BGP_INSTANCE>` | MikroTik BGP instance name, default `vpn-bfd` |
+| `<MT_BGP_CONNECTION>` | BGP connection name for Server1, default `vpn-to-server1` |
 | `<DST_ADDRESS_LIST>` | Existing RouterOS `dst-address-list` selected for the VPN path |
 | `<WAN_INTERFACE_LIST>` | RouterOS interface list of WAN ports, excluded from policy marking |
 | `<WG_EXIT_IF>` | Server1 WireGuard interface for one exit, e.g. `wg-exit`, `wg-exit2` |

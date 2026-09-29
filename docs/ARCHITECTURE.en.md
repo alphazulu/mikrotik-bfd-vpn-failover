@@ -164,6 +164,8 @@ add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF>
 
 This is important for correct single-hop BFD behavior and source address selection.
 
+RouterOS supports BFD for BGP via `use-bfd=yes`; BFD for static `/ip route` gateways is [listed by MikroTik as unsupported](https://manual.mikrotik.com/docs/user-guides/routing-and-networking-protocols/unicast/bfd/). BIRD uses `bfd on` for the Server1 BGP session. Narrow INPUT rules permit BGP TCP/179 as well as BFD UDP/3784 on the AWG link. RouterOS 7.20+ uses an explicit BGP instance and distinct private ASNs. MikroTik exports no routes and accepts only the selected incoming prefixes.
+
 ## 6. Failure domains
 
 The design handles two separate failures:
@@ -174,7 +176,7 @@ Handled on Server1 by BFD/BIRD and policy routing.
 
 ### MikroTik ↔ Server1 failure
 
-Handled on MikroTik by its own BFD session and `check-gateway=bfd` route monitoring.
+Handled by an eBGP session with `use-bfd=yes` on MikroTik and `bfd on` in BIRD on Server1.
 
 The two mechanisms are independent.
 
@@ -185,7 +187,7 @@ Two MikroTik routing models are supported.
 
 ### Address-list + mangle mode
 
-The failover route lives in a dedicated RouterOS routing table. The configurator ensures that the table exists, creates a BFD-monitored route inside it, and generates `mark-connection` rules for the selected destination address lists.
+The configurator creates a dedicated RouterOS table, a BGP session with BFD, and `mark-connection` rules for selected address lists. Server1 advertises the configured `mt-dst` from a separate BIRD `mt_advertised` table without exporting it into the Linux kernel. This announcement remains available when all Server2 exits are down, because Server1 can use its own WAN.
 
 RouterOS v7 requires `new-routing-mark` to reference an existing routing table, so mangle uses the actual table name (for example `VPN`):
 
@@ -194,7 +196,7 @@ RouterOS v7 requires `new-routing-mark` to reference an existing routing table, 
 add action=mark-routing chain=prerouting connection-mark=CM_VPN new-routing-mark=VPN
 ```
 
-With the current default RouterOS policy order, routing decisions are evaluated as `mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main`. Mangle therefore attempts the table selected by `new-routing-mark` first. If the BFD-controlled default in `VPN` is inactive and no other route in that table matches, that lookup fails and RouterOS continues through the remaining policy rules. The configurator adds one explicit user rule to make the fallback to `main` obvious:
+With the current default RouterOS policy order, routing decisions are evaluated as `mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main`. Mangle attempts the marked table first. If BFD goes DOWN, BGP withdraws the prefix; with no matching route in that table, RouterOS continues through the remaining policy rules. The configurator adds one explicit fallback to `main`:
 
 ```routeros
 /routing rule
@@ -205,7 +207,7 @@ No synthetic `VPN_RM` table/mark is needed.
 
 The fallback rule deliberately uses `action=lookup`, not `lookup-only-in-table`. RouterOS documents `lookup` as the fall-through action: if the selected table cannot resolve the destination, policy processing continues. `lookup-only-in-table` is the no-fallback form and can make the destination unreachable when that table has no active route.
 
-The generator also intentionally keeps only the BFD-controlled default in the dedicated policy table. An old `distance=2` WAN default left inside `VPN` would make the mangle lookup succeed inside `VPN`, so the fallback to `main` would never be reached. If `/routing/settings policy-rules` has been customized away from the default order, verify that `mangle`, `user`, and `main` still appear in a compatible order.
+The dedicated table should contain only the selected BGP prefix. An old `distance=2` WAN default left in `VPN` would make lookup succeed there and prevent fallback to `main`. If `/routing/settings policy-rules` was customized, verify the order of `mangle`, `user`, and `main`.
 
 Packets to the router itself are excluded with `dst-address-type=!local`, and traffic arriving on the WAN interface list is not marked.
 
@@ -215,13 +217,13 @@ The address-list contents themselves are not generated because they are deployme
 
 Because connections are marked, the MikroTik failover script can selectively remove only those connections on route state changes.
 
-If the configured routing table is `main`, no extra routing rules are emitted: the BFD route and the normal default already share one table, so an inactive BFD route yields to the remaining default.
+Policy mode requires a dedicated table other than `main`.
 
 ### Direct-route mode
 
-No policy-routing marks are used. The configurator accepts one or more IPv4/CIDR destinations and creates static routes directly in `main` through the Server1 AWG gateway with `check-gateway=bfd`.
+No policy-routing marks are used. Server1 advertises the requested IPv4/CIDR destinations via BGP; RouterOS installs them in `main` through the Server1 AWG gateway. A requested `0.0.0.0/0` is announced as two `/1` prefixes so that it wins longest-prefix selection over the regular WAN `/0` while the tunnel is alive.
 
-When the BFD session is DOWN, those specific routes become inactive and normal RouterOS longest-prefix routing falls back to other matching routes, usually the regular Internet default route.
+When BFD is DOWN, BGP withdraws those prefixes and RouterOS falls back to other matching routes, usually the regular WAN default.
 
 This mode intentionally does not generate mangle rules, connection marks, or selective MikroTik conntrack cleanup. It is simpler and works well when the set of destinations can be expressed directly as routes.
 

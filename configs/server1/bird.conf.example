@@ -4,6 +4,7 @@
 router id <WG_EXIT_S1_IP>;
 
 ipv4 table exit4;
+ipv4 table mt_advertised;
 
 protocol device {
 }
@@ -40,5 +41,25 @@ protocol kernel kernel_exit {
         table exit4;
         import none;
         export all;
+    };
+}
+
+# This route is advertised to MikroTik, never installed in Server1's kernel.
+# It remains independent of the BFD-controlled Server2 exit above.
+protocol static mt_export {
+    ipv4 { table mt_advertised; };
+    route 0.0.0.0/0 reject;
+}
+
+protocol bgp bgp_mt {
+    local <AWG_SERVER_IP> as <SERVER1_BGP_AS>;
+    neighbor <AWG_MIKROTIK_IP> as <MT_BGP_AS>;
+    interface "<AWG_IF>";
+    bfd on;
+    ipv4 {
+        table mt_advertised;
+        import none;
+        export all;
+        next hop self;
     };
 }

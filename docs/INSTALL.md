@@ -200,11 +200,11 @@ systemctl daemon-reload
 systemctl enable --now vpn-failover-firewall.service
 ```
 
-Unit добавляет резервный `MASQUERADE` для клиентских сетей, правила `FORWARD` на Server1 и разрешения `INPUT` для внешних портов AWG и при наличии `wg-in`, BFD UDP/3784 от MikroTik на `<AWG_IF>` и от каждого Server2 на соответствующем `wg-exit*`. Комментарии позволяют unit удалять только собственные правила.
+Unit добавляет резервный `MASQUERADE` для клиентских сетей, правила `FORWARD` на Server1 и разрешения `INPUT` для внешних портов AWG и при наличии `wg-in`, BFD UDP/3784 от MikroTik и каждого Server2, а также BGP TCP/179 от MikroTik к Server1 внутри `<AWG_IF>`. Комментарии позволяют unit удалять только собственные правила.
 
 ## 10. Server1 — BIRD
 
-Для одного выхода используйте `configs/server1/bird.conf.example` как `/etc/bird/bird.conf`; для нескольких — конфигуратор или `configs/server1/bird-multi-exit.conf.example`.
+Для одного выхода используйте `configs/server1/bird.conf.example` как `/etc/bird/bird.conf`; для нескольких — конфигуратор или `configs/server1/bird-multi-exit.conf.example`. Настройте разные частные AS Server1 и MikroTik, по умолчанию 65001 и 65010. BIRD анонсирует выбранный префикс в MikroTik из отдельной таблицы `mt_advertised`; она не экспортируется в kernel. Анонс сохраняется даже при отказе всех Server2, пока доступен Server1.
 
 У каждого Server2 собственная таблица BIRD, статический default под контролем BFD и таблица Linux:
 
@@ -233,6 +233,8 @@ ip route show table 200
 
 При BFD UP в таблице 200 ожидается default через `wg-exit`.
 
+Для связи с MikroTik также проверьте `birdc show protocols bgp_mt`. Межсерверные BFD-сессии и default в таблицах 200+ работают независимо от этого BGP-анонса.
+
 ## 11. Server1 — монитор conntrack
 
 Установите `configs/server1/vpn-exit-monitor.sh` в `/usr/local/sbin/vpn-exit-monitor.sh`, а `configs/server1/vpn-exit-monitor.service` — в `/etc/systemd/system/`:
@@ -254,7 +256,7 @@ journalctl -t vpn-exit-monitor -f
 mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main
 ```
 
-Отдельная таблица (например, `VPN`) создаётся с `fib` до ссылки на неё через `new-routing-mark`; в ней должен быть только управляемый BFD default. Если он выключен, поиск продолжится по явному правилу:
+Отдельная таблица (например, `VPN`) создаётся с `fib` до ссылки на неё через `new-routing-mark`; в ней должен оставаться только полученный по BGP префикс. Когда BFD разрывает BGP-сессию, префикс отзывается, и поиск продолжается по явному правилу:
 
 ```routeros
 /routing rule
@@ -263,7 +265,7 @@ add action=lookup routing-mark=VPN table=main comment="VPN_BFD_FALLBACK"
 
 Не заменяйте `lookup` на `lookup-only-in-table`. Удалите прежний резервный default в самой таблице `VPN`, например маршрут к обычному WAN с `distance=2`: иначе поиск завершится в `VPN` и fallback к `main` не сработает. При изменённом `/routing/settings policy-rules` проверьте, что `mangle` предшествует `user/main` и `main` остаётся доступен.
 
-## 12. MikroTik — BFD к Server1
+## 12. MikroTik — BGP и BFD к Server1
 
 Используйте обезличенный пример `configs/mikrotik/bfd-failover.rsc.example`. Для туннельного адреса `/32`:
 
@@ -272,14 +274,16 @@ add action=lookup routing-mark=VPN table=main comment="VPN_BFD_FALLBACK"
 add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF>
 ```
 
-Firewall MikroTik должен пропускать BFD-пакеты к самому роутеру. Генерируемый `.rsc` добавляет узкое правило `chain=input protocol=udp dst-port=3784` для направления `<AWG_SERVER_IP> -> <AWG_MIKROTIK_IP>` на `<MT_AWG_IF>` перед первым существующим правилом `INPUT drop`, если оно есть.
+Требуется RouterOS 7.20+. Firewall MikroTik должен пропускать BFD UDP/3784 и BGP TCP/179 к самому роутеру по туннелю. Генерируемый `.rsc` добавляет узкие правила `INPUT` для точных IP/интерфейса перед первым существующим правилом `INPUT drop`. BGP instance и connection используют разные частные AS и `use-bfd=yes`; входной фильтр принимает только выбранные префиксы, выходной отвергает всё.
 
 Выберите один из режимов:
 
-- **Address-list + mangle:** отдельная таблица, маршрут с `check-gateway=bfd`, метка маршрутизации с именем таблицы (например, `VPN`) и `/routing rule action=lookup routing-mark=<table> table=main` для fallback. Доступна выборочная очистка `CM_VPN` conntrack. Общие fasttrack-правила ограничиваются `connection-mark=no-mark`. При переходе со старой схемы удалите резервный default с `distance=2` из отдельной таблицы после добавления правила fallback.
-- **Прямые маршруты:** нужные префиксы создаются в `main` через шлюз AWG с `check-gateway=bfd`, без mangle и меток соединений.
+- **Address-list + mangle:** отдельная таблица с префиксом, полученным по BGP, метка с именем таблицы (например, `VPN`) и `/routing rule action=lookup routing-mark=<table> table=main` для fallback. Скрипт ищет активный динамический маршрут к Server1 и при изменении удаляет только `CM_VPN` conntrack. Общие fasttrack-правила ограничиваются `connection-mark=no-mark`.
+- **Прямые маршруты:** нужные префиксы BGP устанавливаются в `main` через AWG, без mangle и меток. Запрошенный default `/0` преобразуется в два `/1`, поэтому при доступном Server1 они выигрывают у обычного WAN default, а после обрыва туннеля исчезают.
 
 Во втором режиме генератор не очищает выборочно старые соединения MikroTik: метки для их отбора нет.
+
+При миграции `.rsc` удаляет только старые маршруты генератора с комментариями `VPN_BFD_PRIMARY` и `VPN_BFD_DIRECT`, заменяет собственный watcher. До импорта удалите вручную посторонний резервный default из таблицы `VPN` и убедитесь, что выбранные BGP-имена и AS не конфликтуют с имеющейся конфигурацией. Не создавайте повторно уже существующий AWG-адрес и BFD configuration. Сначала установите BIRD и разрешение TCP/179 на Server1, затем импортируйте конфиг MikroTik. После запуска проверьте `/routing bgp session print detail`, `/routing bfd session print detail` и динамический маршрут в нужной таблице.
 
 ## 13. Функциональная проверка
 

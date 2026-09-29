@@ -257,11 +257,11 @@ systemctl daemon-reload
 systemctl enable --now vpn-failover-firewall.service
 ```
 
-The unit manages source-specific fallback `MASQUERADE` rules plus explicit Server1 `FORWARD` rules for the incoming VPN interfaces. It also installs explicit `INPUT` permissions for the public Server1 AWG listen port on `<SERVER1_WAN_IF>`, the optional `wg-in` listen port when generated, single-hop BFD UDP/3784 from MikroTik on `<AWG_IF>`, and BFD from every Server2 on the matching `wg-exit*` interface. Generated rules carry project-specific comments so the service removes only its own entries.
+The unit manages source-specific fallback `MASQUERADE` and `FORWARD` rules. Its narrow `INPUT` rules permit AWG, optional `wg-in`, BFD UDP/3784 from MikroTik and each Server2, and BGP TCP/179 from MikroTik inside `<AWG_IF>`. Project-specific comments let the unit remove only its own entries.
 
 ## 10. Server1 — BIRD
 
-Create `/etc/bird/bird.conf` from `configs/server1/bird.conf.example` for a single exit, or use the configurator / `configs/server1/bird-multi-exit.conf.example` for multiple exits.
+Create `/etc/bird/bird.conf` from `configs/server1/bird.conf.example` for one exit, or use the configurator / `configs/server1/bird-multi-exit.conf.example` for multiple exits. Server1 and MikroTik need distinct private ASNs (defaults 65001 and 65010). BIRD advertises the selected prefix to MikroTik from a separate `mt_advertised` table with no kernel export. This announcement continues while Server1 is available, including when every Server2 is down.
 
 Each Server2 owns its own BIRD table, static BFD-controlled default, and Linux kernel table:
 
@@ -290,6 +290,8 @@ ip route show table 200
 
 With BFD UP, table `200` should contain a default via `wg-exit`.
 
+Check `birdc show protocols bgp_mt` for the MikroTik session. The Server2 BFD routes in tables 200+ remain independent.
+
 ## 11. Server1 — conntrack event monitor
 
 Install `configs/server1/vpn-exit-monitor.sh` as `/usr/local/sbin/vpn-exit-monitor.sh` and `configs/server1/vpn-exit-monitor.service` under `/etc/systemd/system/`.
@@ -313,7 +315,7 @@ For address-list + mangle mode, the generated RouterOS configuration assumes the
 mangle -> vrf-lookup -> vrf-unreach -> local -> user -> main
 ```
 
-The dedicated routing table (for example `VPN`) is created with `fib` before it is referenced by `new-routing-mark`. The table contains only the BFD-controlled default route. When BFD makes that route inactive, the mangle lookup fails and policy processing continues to the explicit user fallback:
+The dedicated table (for example `VPN`) is created with `fib` before `new-routing-mark` references it. It should contain only the selected BGP prefix. When BFD tears down the BGP session, that prefix is withdrawn and policy processing continues to the explicit fallback:
 
 ```routeros
 /routing rule
@@ -324,7 +326,7 @@ Do not change this fallback to `lookup-only-in-table`. Also remove any legacy ba
 
 If the router has a customized `/routing/settings policy-rules`, check it before deployment. The generated design requires `mangle` to be evaluated before `user/main`, and `main` must remain available as the final forwarding table.
 
-## 12. MikroTik — BFD to Server1
+## 12. MikroTik — BGP and BFD to Server1
 
 Use the sanitized example in `configs/mikrotik/bfd-failover.rsc.example`.
 
@@ -335,14 +337,16 @@ For a `/32` tunnel address:
 add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF>
 ```
 
-Before relying on BFD, the MikroTik firewall must allow the BFD control packets addressed to the router itself. The generated `.rsc` adds a narrow `chain=input protocol=udp dst-port=3784` rule constrained to `<AWG_SERVER_IP> -> <AWG_MIKROTIK_IP>` on `<MT_AWG_IF>`, and inserts it before the first existing INPUT drop rule when present.
+RouterOS 7.20+ is required. MikroTik INPUT must accept BFD UDP/3784 and BGP TCP/179 on the AWG link from the exact peer address. The generated `.rsc` inserts narrow rules before the first existing INPUT drop. BGP uses distinct private ASNs, `use-bfd=yes`, an inbound prefix allowlist, and an outbound reject-all filter.
 
 Then choose one of the two generated MikroTik modes:
 
-- **Address-list + mangle:** use a dedicated routing table and `check-gateway=bfd` on the monitored route. In RouterOS v7 `new-routing-mark` must reference an existing routing table, so the mark is the table name (for example `VPN`). If the BFD route becomes inactive, the mangle lookup fails and processing continues; the generated `/routing rule action=lookup routing-mark=<table> table=main` makes fallback to the normal WAN default explicit. This mode supports selective `CM_VPN`-style conntrack cleanup. Import also sets `connection-mark=no-mark` on catch-all fasttrack rules so later packets still honor the policy. If migrating from the older layout where the policy table itself also contains a backup default (for example `distance=2` via the normal WAN gateway), remove or disable that backup route after adding the fallback rule; otherwise the policy-table lookup succeeds on that route and never reaches the `main` fallback rule.
-- **Direct routes:** add the required destination prefixes directly to `main`, each through the AWG gateway with `check-gateway=bfd`. No mangle or connection marks are generated.
+- **Address-list + mangle:** the dedicated table receives a BGP prefix, and `new-routing-mark` references that table (for example `VPN`). When BGP withdraws it, `/routing rule action=lookup routing-mark=<table> table=main` provides fallback. The watcher tracks the active dynamic route and selectively clears `CM_VPN` conntrack. Catch-all fasttrack rules are limited to `connection-mark=no-mark`.
+- **Direct routes:** BGP installs selected prefixes into `main` over AWG without mangle or marks. Requested `/0` becomes two `/1` prefixes to outrank the normal WAN default while the tunnel is available and disappear on failure.
 
 In direct-route mode, existing connections are not selectively flushed by the generated MikroTik script because no connection mark exists.
+
+For migration, the `.rsc` removes only former generator routes commented `VPN_BFD_PRIMARY` or `VPN_BFD_DIRECT` and replaces its watcher. Manually remove any unrelated backup WAN default inside `VPN`. Verify selected BGP names and ASNs do not conflict with existing configuration; do not duplicate an existing AWG address or BFD configuration. Install Server1 BIRD and its TCP/179 allow rule before importing the MikroTik script. Then check `/routing bgp session print detail`, `/routing bfd session print detail`, and the dynamic route in the selected table.
 
 ## 13. Functional test
 
