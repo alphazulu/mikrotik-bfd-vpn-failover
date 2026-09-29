@@ -2212,8 +2212,12 @@ add address=${awgMt}/32 network=${awgServer} interface=${qRouter(mtIf)} comment=
     }
 }
 
-/routing bfd configuration
-add interfaces=${qRouter(mtIf)} addresses=${awgServer}/32 min-rx=${bfd}ms min-tx=${bfd}ms multiplier=${mult}
+# Re-import updates this entry instead of stacking another one. Without it, single-hop BFD is forbidden.
+:if ([:len [/routing bfd configuration find where comment="VPN_BFD"]] = 0) do={
+    /routing bfd configuration add comment="VPN_BFD" interfaces=${qRouter(mtIf)} addresses=${awgServer}/32 min-rx=${bfd}ms min-tx=${bfd}ms multiplier=${mult} disabled=no
+} else={
+    /routing bfd configuration set [find where comment="VPN_BFD"] interfaces=${qRouter(mtIf)} addresses=${awgServer}/32 min-rx=${bfd}ms min-tx=${bfd}ms multiplier=${mult} disabled=no
+}
 
 # BGP is the client of BFD on this link. Both peers can initiate TCP/179.
 :if ([:len [/ip firewall filter find where comment="VPN_BGP_INPUT"]] = 0) do={
@@ -2281,8 +2285,27 @@ add name=VPN-BFD-Conntrack policy=read,write,test source={
     }
 }
 
-/system scheduler
-add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack start-time=startup
+# A startup-only scheduler would not run until the next reboot. Arm the watcher a couple of seconds ahead and take the first sample during import.
+:local t [/system clock get time]
+:local h [:tonum [:pick $t 0 2]]
+:local m [:tonum [:pick $t 3 5]]
+:local s [:tonum [:pick $t 6 8]]
+:set s ($s + 2)
+:if ($s > 59) do={
+    :set s ($s - 60)
+    :set m ($m + 1)
+}
+:if ($m > 59) do={
+    :set m ($m - 60)
+    :set h ($h + 1)
+}
+:if ($h > 23) do={ :set h 0 }
+:local hh [:pick ("0" . $h) ([:len ("0" . $h)] - 2) [:len ("0" . $h)]]
+:local mm [:pick ("0" . $m) ([:len ("0" . $m)] - 2) [:len ("0" . $m)]]
+:local ss [:pick ("0" . $s) ([:len ("0" . $s)] - 2) [:len ("0" . $s)]]
+:local start ($hh . ":" . $mm . ":" . $ss)
+/system scheduler add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack start-time=$start
+/system script run VPN-BFD-Conntrack
 ${mikrotikPolicyBlock}`;
   }
 

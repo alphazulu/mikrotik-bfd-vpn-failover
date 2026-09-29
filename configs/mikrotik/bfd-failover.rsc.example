@@ -28,8 +28,11 @@ add address=<AWG_MIKROTIK_IP>/32 network=<AWG_SERVER_IP> interface=<MT_AWG_IF> c
     }
 }
 
-/routing bfd configuration
-add interfaces=<MT_AWG_IF> addresses=<AWG_SERVER_IP>/32 min-rx=500ms min-tx=500ms multiplier=3
+:if ([:len [/routing bfd configuration find where comment="VPN_BFD"]] = 0) do={
+    /routing bfd configuration add comment="VPN_BFD" interfaces=<MT_AWG_IF> addresses=<AWG_SERVER_IP>/32 min-rx=500ms min-tx=500ms multiplier=3 disabled=no
+} else={
+    /routing bfd configuration set [find where comment="VPN_BFD"] interfaces=<MT_AWG_IF> addresses=<AWG_SERVER_IP>/32 min-rx=500ms min-tx=500ms multiplier=3 disabled=no
+}
 
 :if ([:len [/routing table find where name="<MT_ROUTE_TABLE>"]] = 0) do={ /routing table add fib name="<MT_ROUTE_TABLE>" }
 
@@ -76,5 +79,17 @@ add name=VPN-BFD-Conntrack policy=read,write,test source={
         }
     }
 }
-/system scheduler
-add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack start-time=startup
+:local t [/system clock get time]
+:local h [:tonum [:pick $t 0 2]]
+:local m [:tonum [:pick $t 3 5]]
+:local s [:tonum [:pick $t 6 8]]
+:set s ($s + 2)
+:if ($s > 59) do={ :set s ($s - 60); :set m ($m + 1) }
+:if ($m > 59) do={ :set m ($m - 60); :set h ($h + 1) }
+:if ($h > 23) do={ :set h 0 }
+:local hh [:pick ("0" . $h) ([:len ("0" . $h)] - 2) [:len ("0" . $h)]]
+:local mm [:pick ("0" . $m) ([:len ("0" . $m)] - 2) [:len ("0" . $m)]]
+:local ss [:pick ("0" . $s) ([:len ("0" . $s)] - 2) [:len ("0" . $s)]]
+:local start ($hh . ":" . $mm . ":" . $ss)
+/system scheduler add name=VPN-BFD-Watch interval=1s on-event=VPN-BFD-Conntrack start-time=$start
+/system script run VPN-BFD-Conntrack
